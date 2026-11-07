@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' http://127.0.0.1:* blob:; script-src 'self' http://127.0.0.1:* 'unsafe-eval' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' http://127.0.0.1:*; img-src 'self' data: http://127.0.0.1:*; connect-src 'self' http://127.0.0.1:* blob: data:; worker-src 'self' blob: http://127.0.0.1:*; media-src 'self' mediastream: blob:">
+<title>提词窗口</title>
+<link rel="stylesheet" href="prompt.css">
+</head>
+<body>
+
+<div id="app">
+  <div id="bg"></div>
+
+  <header id="topbar" class="drag">
+    <div class="tb-left">
+      <span class="grip">⠿</span>
+      <span class="doc-title" id="article-title">提词窗口</span>
+      <span class="mode-chip" id="mode-chip">定速滚动</span>
+    </div>
+    <div class="tb-right">
+      <span class="stat" id="stat">总字数 0 · 进度 0%</span>
+      <button class="tb-btn" id="btn-settings" title="提词设置">⚙</button>
+      <button class="tb-btn" id="btn-debug" title="调试信息">◫</button>
+      <button class="tb-btn" id="btn-max" title="铺满屏幕 (F)">⛶</button>
+      <button class="tb-btn" id="btn-min" title="最小化">─</button>
+      <button class="tb-btn" id="btn-close" title="返回首页 (Esc)">×</button>
+    </div>
+  </header>
+
+  <div id="stage">
+    <div id="reading-area"><span>READING AREA</span></div>
+    <div id="viewport">
+      <div id="script"><div id="script-inner"></div></div>
+    </div>
+    <div class="fade fade-top"></div>
+    <div class="fade fade-bottom"></div>
+  </div>
+
+  <footer id="controlbar">
+    <div class="modes" id="modes">
+      <button data-mode="manual" title="滚轮 / 拖拽 / 方向键手动滚动">✋ 手动</button>
+      <button data-mode="timed" title="按设定语速匀速滚动">⏱ 定速</button>
+      <button data-mode="voice" title="离线中文语音识别，说到哪滚到哪">🎙 语音跟读</button>
+    </div>
+
+    <div class="playback">
+      <button id="btn-restart" title="回到开头 (R)">⏮</button>
+      <button id="btn-back" title="后退 (←)">◀◀</button>
+      <button id="btn-play" class="play" title="播放 / 暂停 (空格)">❚❚</button>
+      <button id="btn-fwd" title="前进 (→)">▶▶</button>
+    </div>
+
+    <div class="slider-wrap" id="speed-wrap">
+      <div class="slider-label"><span>语速</span><b id="speed-val">4.2 字/秒</b></div>
+      <input type="range" id="speed" min="1" max="10" step="0.1" value="4.2">
+      <div class="presets" id="speed-presets">
+        <button data-v="3.2">慢</button><button data-v="4.2">适中</button>
+        <button data-v="5.5">快</button><button data-v="7">很快</button>
+      </div>
+    </div>
+
+    <div class="voice-box" id="voice-box" hidden>
+      <div class="voice-line"><span class="pulse" id="pulse"></span><span id="voice-text">离线模型待加载</span></div>
+      <div class="level"><i id="level-bar"></i></div>
+      <div class="voice-sub" id="voice-sub">无需联网 · 本地识别</div>
+    </div>
+
+    <div class="float-tools">
+      <div class="slider-wrap opacity">
+        <div class="slider-label"><span>背景</span><b id="opacity-val">86%</b></div>
+        <input type="range" id="opacity" min="0" max="100" step="1" value="86">
+      </div>
+      <button class="tool-btn" id="btn-through" title="鼠标穿透 (T)">⌖<em>穿透</em></button>
+      <button class="tool-btn on" id="btn-pin" title="窗口置顶 (O)">★<em>置顶</em></button>
+    </div>
+  </footer>
+
+  <div id="debug" hidden>
+    <div class="dbg-title">DEBUG MONITOR</div>
+    <div><span>STRATEGY</span><b id="dbg-strategy">TIMED</b></div>
+    <div><span>PACE CPS</span><b id="dbg-cps">4.20</b></div>
+    <div><span>POSITION</span><b id="dbg-pos">0 / 0</b></div>
+    <div><span>MATCH</span><b id="dbg-match">—</b></div>
+    <div><span>HEARD</span><b id="dbg-heard">—</b></div>
+    <div><span>ASR</span><b id="dbg-asr">OFF</b></div>
+  </div>
+
+  <aside id="settings" hidden>
+    <div class="set-head">
+      <h2>⚙ 提词设置</h2>
+      <button class="icon-btn" id="set-close">×</button>
+    </div>
+    <div class="set-body">
+
+      <section class="set-card">
+        <div class="set-row">
+          <div><div class="set-name">自动适配</div><div class="set-desc">根据窗口大小自动匹配字号、行距和边距</div></div>
+          <button class="switch on" id="set-autofit"><i></i></button>
+        </div>
+      </section>
+
+      <section class="set-card">
+        <div class="set-row"><div class="set-name">T &nbsp;字号</div><b id="set-font-val">60px</b></div>
+        <input type="range" id="set-font" min="24" max="120" step="2" value="60">
+        <div class="chips" id="font-chips"><button>40px</button><button>52px</button><button>64px</button><button>80px</button><button>96px</button></div>
+      </section>
+
+      <section class="set-card">
+        <div class="set-row"><div class="set-name">☰ &nbsp;行距</div><b id="set-line-val">1.5</b></div>
+        <input type="range" id="set-line" min="1" max="2.4" step="0.1" value="1.5">
+        <div class="chips" id="line-chips"><button>1.2</button><button>1.4</button><button>1.6</button><button>1.8</button><button>2.0</button></div>
+      </section>
+
+      <section class="set-card">
+        <div class="set-row">
+          <div><div class="set-name">镜像模式</div><div class="set-desc">用于分光镜反射式提词器硬件</div></div>
+          <button class="switch" id="set-mirror"><i></i></button>
+        </div>
+      </section>
+
+      <section class="set-card">
+        <div class="set-row"><div class="set-name">|·| &nbsp;左右边距</div><b id="set-margin-val">5%</b></div>
+        <input type="range" id="set-margin" min="0" max="25" step="1" value="5">
+        <div class="chips" id="margin-chips"><button>0%</button><button>5%</button><button>10%</button><button>15%</button><button>20%</button></div>
+      </section>
+
+      <section class="set-card">
+        <div class="set-row"><div class="set-name">背景不透明度</div><b id="set-opacity-val">86%</b></div>
+        <input type="range" id="set-opacity" min="0" max="100" step="1" value="86">
+        <div class="set-desc" style="margin-top:6px">调到 0 时窗口完全透明，只留下文字悬浮在桌面上</div>
+      </section>
+
+      <section class="set-card">
+        <div class="set-row"><div class="set-name">文字颜色</div></div>
+        <div class="colors" id="colors">
+          <button data-c="#ffffff" style="background:#fff" class="on"></button>
+          <button data-c="#ffd54a" style="background:#ffd54a"></button>
+          <button data-c="#8dffb0" style="background:#8dffb0"></button>
+          <button data-c="#9ed0ff" style="background:#9ed0ff"></button>
+          <button data-c="#ff9c9c" style="background:#ff9c9c"></button>
+          <input type="color" id="custom-color" value="#ffffff" title="自定义">
+        </div>
+      </section>
+
+      <section class="set-card">
+        <div class="set-row"><div><div class="set-name">显示阅读区</div><div class="set-desc">黄色方框标出当前应读的行</div></div>
+          <button class="switch on" id="set-reading"><i></i></button></div>
+        <div class="set-row" style="margin-top:14px"><div><div class="set-name">全局快捷键</div><div class="set-desc">Ctrl+Alt+空格/↑/↓/R/P/T 在任何软件里控制</div></div>
+          <button class="switch on" id="set-hotkeys"><i></i></button></div>
+      </section>
+
+      <section class="set-card">
+        <div class="set-row"><div class="set-name">稿件内容（实时同步）</div></div>
+        <textarea id="set-content" spellcheck="false" placeholder="在这里改稿，提词窗与管理窗同步更新"></textarea>
+        <button class="link-btn" id="set-optimize">✦ AI 优化正文</button>
+      </section>
+
+      <section class="set-card shortcuts">
+        <div class="set-name">快捷键</div>
+        <div class="set-desc">空格 播放/暂停 · ←→ 微调 · R 回到开头 · T 鼠标穿透<br>O 置顶 · M 镜像 · F 铺满 · +/− 字号 · Esc 返回首页</div>
+      </section>
+    </div>
+    <div class="set-foot">
+      <button class="btn-ghost" id="set-back">返回首页</button>
+      <button class="btn-ghost" id="set-hide">隐藏提词窗</button>
+    </div>
+  </aside>
+
+  <div id="toast" hidden></div>
+</div>
+
+<script src="common.js"></script>
+<script src="ai-optimize.js"></script>
+<script src="asr.js"></script>
+<script src="/vendor/vosk.js"></script>
+<script src="prompt.js"></script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+{
+  "name": "floating-teleprompter",
+  "version": "1.0.0",
+  "productName": "飓风提词器 桌面版",
+  "description": "非官方独立重写的桌面悬浮透明提词器：离线、免安装、永久免费。灵感来自影视飓风「飓风提词器」。",
+  "main": "main.js",
+  "author": "neoshua",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/neoshua/floating-teleprompter.git"
+  },
+  "bugs": {
+    "url": "https://github.com/neoshua/floating-teleprompter/issues"
+  },
+  "homepage": "https://github.com/neoshua/floating-teleprompter#readme",
+  "keywords": [
+    "teleprompter",
+    "提词器",
+    "electron",
+    "offline-asr",
+    "悬浮窗",
+    "透明度"
+  ],
+  "scripts": {
+    "start": "electron .",
+    "setup": "node scripts/setup.mjs",
+    "pack": "node scripts/pack.js"
+  },
+  "devDependencies": {
+    "electron": "37.2.6",
+    "@electron/packager": "18.4.4",
+    "vosk-browser": "0.0.8"
+  }
+}

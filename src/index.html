@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' http://127.0.0.1:*; script-src 'self' http://127.0.0.1:*; style-src 'self' 'unsafe-inline' http://127.0.0.1:*; img-src 'self' data: http://127.0.0.1:*; connect-src 'self' http://127.0.0.1:* blob:; worker-src 'self' blob: http://127.0.0.1:*; media-src 'self' mediastream:">
+<title>飓风提词器 · 桌面版</title>
+<link rel="stylesheet" href="manager.css">
+</head>
+<body>
+
+<div class="titlebar">
+  <div class="tb-left">
+    <div class="logo-mark"></div>
+    <span class="brand">飓风提词器</span>
+    <span class="brand-sub">桌面版 · 悬浮透明</span>
+  </div>
+  <div class="tb-drag"></div>
+  <div class="tb-right">
+    <button class="tb-btn about-entry" id="btn-about" title="关于与致谢">关于 · 致谢</button>
+    <button class="tb-btn" id="btn-data" title="打开数据目录">数据目录</button>
+    <button class="tb-btn sys" id="btn-min" title="最小化">─</button>
+    <button class="tb-btn sys" id="btn-max" title="最大化">□</button>
+    <button class="tb-btn sys close" id="btn-close" title="退出">×</button>
+  </div>
+</div>
+
+<header class="hero">
+  <div class="hero-inner">
+    <div class="hero-tag">离线 · 免安装 · 悬浮在任何窗口之上</div>
+    <h1>把台词，放到镜头旁边。</h1>
+    <p>新建稿件 → 开始提词 → 把提词窗拖到摄像头附近，调低背景不透明度。<br>
+       支持定速滚动、手动滚动与离线中文语音跟读，所有数据只存在本机。</p>
+    <div class="hero-actions">
+      <button class="btn-primary" id="btn-new-hero">＋ 新建稿件</button>
+      <button class="btn-ghost" id="btn-quick">用示例稿试一下</button>
+    </div>
+  </div>
+</header>
+
+<main class="content">
+  <div class="toolbar">
+    <div class="section-title">全部稿件 <span class="count" id="count">0 条</span></div>
+    <div class="toolbar-right">
+      <label class="search">
+        <svg viewBox="0 0 24 24" width="16" height="16"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16.5 16.5 21 21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <input id="search" type="text" placeholder="搜索稿件..." autocomplete="off">
+      </label>
+      <button class="btn-primary small" id="btn-new">＋ 新建稿件</button>
+    </div>
+  </div>
+
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="empty" hidden>
+    <div class="empty-icon">▤</div>
+    <div>还没有稿件</div>
+    <p>点击右上角「新建稿件」，粘贴你的口播稿就能开始。</p>
+  </div>
+</main>
+
+<footer class="statusbar">
+  <span id="status-dir">数据目录：加载中…</span>
+  <span class="spacer"></span>
+  <span id="status-asr">离线语音模型：检查中…</span>
+  <span class="dot">·</span>
+  <span>v1.0.0</span>
+</footer>
+
+<!-- 新建 / 编辑弹窗 -->
+<div class="modal-mask" id="modal" hidden>
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <h2 id="modal-title">新建稿件</h2>
+        <p>粘贴台词，保存后即可开始提词</p>
+      </div>
+      <button class="icon-btn" id="modal-close">×</button>
+    </div>
+    <div class="modal-body">
+      <label class="field-label">标题</label>
+      <input id="f-title" class="field" type="text" placeholder="例如：直播开场 · 咖啡豆" maxlength="80">
+      <div class="field-row">
+        <label class="field-label">正文</label>
+        <div class="field-tools">
+          <span id="char-count">0 字</span>
+          <button class="link-btn" id="btn-optimize">✦ AI 优化正文</button>
+          <button class="link-btn" id="btn-undo" hidden>↩ 撤销优化</button>
+        </div>
+      </div>
+      <textarea id="f-content" class="field area" placeholder="在这里粘贴或输入你的口播稿…&#10;&#10;小提示：长句会自动按口播节奏断句，段落之间空一行，提词时更好找位置。"></textarea>
+      <div class="optimize-note" id="optimize-note" hidden></div>
+    </div>
+    <div class="modal-foot">
+      <span class="hint">数据保存在软件目录的 data/ 文件夹，不上传云端</span>
+      <div>
+        <button class="btn-ghost" id="btn-cancel">取消</button>
+        <button class="btn-primary" id="btn-save">保存稿件</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 确认框 -->
+<div class="modal-mask" id="confirm" hidden>
+  <div class="confirm-box">
+    <h3 id="confirm-title">删除稿件？</h3>
+    <p id="confirm-text">删除后无法恢复。</p>
+    <div class="confirm-actions">
+      <button class="btn-ghost" id="confirm-no">取消</button>
+      <button class="btn-danger" id="confirm-yes">删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- 关于与致谢 -->
+<div class="modal-mask" id="about" hidden>
+  <div class="about-box">
+    <div class="about-head">
+      <div class="about-mark">✦</div>
+      <div class="about-heading">
+        <h2>关于 · 致谢</h2>
+        <p>飓风提词器 · 桌面版　v1.0.0　｜　非官方独立作品</p>
+      </div>
+      <button class="icon-btn" id="about-close" title="关闭">×</button>
+    </div>
+
+    <div class="about-body">
+      <section class="thanks-card">
+        <div class="thanks-title">🙏 致敬与感谢影视飓风</div>
+        <p>本项目的灵感与核心功能设计，来自 <b>影视飓风</b> 团队创作并
+          <b>完全免费、无任何隐藏收费</b>地分享给所有创作者的「飓风提词器」。
+          感谢他们把这套原本服务自身工作流的工具，以飞书妙搭同款模板的形式开放，
+          并公开完整使用指南，让创作者不必再忍受广告与乱收费。</p>
+        <p class="thanks-sub">没有这份分享，就没有这个桌面悬浮版本。</p>
+        <div class="about-links">
+          <button data-url="https://mcnt8r4c3f2k.aiforce.cloud/app/app_4k0qhy8j74gpb">原版应用 ↗</button>
+          <button data-url="https://bytedance.larkoffice.com/docx/BLJCdabRFoO0bhxx2OqcS0khnLh">官方使用指南 ↗</button>
+          <button data-url="https://www.ysjf.com/home">影视飓风官网 ↗</button>
+        </div>
+      </section>
+
+      <section class="notice-card">
+        <div class="notice-title">⚠️ 非官方声明</div>
+        <ul>
+          <li>本项目<b>不是官方版本</b>，与影视飓风、飞书 / 字节跳动、飞书妙搭
+            不存在任何隶属、授权、合作或背书关系。</li>
+          <li>全部代码与界面均为独立编写，<b>未使用、未复制、未分发</b>原版的
+            任何源代码、素材、商标或云端接口。</li>
+          <li>「飓风提词器」名称及相关标识的权利归各自权利人所有，
+            本软件仅作指代与致谢使用，不主张任何权利。</li>
+          <li>如相关权利人认为有不妥之处，欢迎在项目仓库提交 Issue，
+            我们会<b>及时更名、调整或下架</b>。</li>
+        </ul>
+      </section>
+
+      <section class="notice-card free">
+        <div class="notice-title">💛 永久免费 · 欢迎自愿支持</div>
+        <p>本软件<b>不收费、无广告、无内购、无遥测、无付费墙</b>，
+          稿件与语音数据只留在本机。许可为
+          <b>MIT 基础条款 + 免费使用附加条款</b>：禁止出售软件、强制收费、
+          植入广告或设置付费墙；同时<b>明确允许自愿、非强制的赞助</b>——
+          不构成购买、不影响功能、不授予额外权利，
+          再分发须保持免费并保留署名致谢。</p>
+        <p class="license-note">官方并未发布过正式开源许可证；我们据其公开表述
+          「完全免费」与「可一键领取同款自行修改」落实为上述承诺，
+          详见随包 <code>NOTICE.md</code>。</p>
+      </section>
+
+      <section class="about-meta">
+        <div>开源组件：<span>Electron (MIT) · vosk-browser (Apache-2.0) · Vosk 中文模型 (Apache-2.0)</span></div>
+        <div>完整声明：<code>LICENSE</code> · <code>NOTICE.md</code> · <code>THIRD_PARTY_NOTICES.md</code></div>
+      </section>
+    </div>
+
+    <div class="about-foot">
+      <span>由社区独立开发，免费分享给所有创作者</span>
+      <button class="btn-ghost" id="about-repo">项目仓库 ↗</button>
+      <button class="btn-primary" id="about-ok">知道了</button>
+    </div>
+  </div>
+</div>
+
+<script src="common.js"></script>
+<script src="ai-optimize.js"></script>
+<script src="manager.js"></script>
+</body>
+</html>

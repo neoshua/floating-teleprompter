@@ -1,0 +1,114 @@
+MIT License with Free-Use Addendum (Voluntary Sponsorship Permitted)
+MIT 许可证 · 免费使用附加条款（允许自愿赞助）
+
+Copyright (c) 2026 neoshua
+
+==========================================================================
+重要说明（请先读这一段）
+==========================================================================
+本文件由两部分组成：第一部分「附加条款」，第二部分「MIT 基础条款」。
+附加条款是本软件许可条件的一部分，且在与 MIT 基础条款冲突时优先适用。
+
+附加条款的核心是：**软件本体永久免费、不得拿去卖、不得植入广告或付费墙；
+但明确允许自愿、非强制的赞助与打赏**。由于附加了这些限制，本许可
+**不是** OSI 认证的标准 MIT 许可证，没有对应的 SPDX 标识符，
+GitHub 可能将其显示为 "Other"。请不要把本软件当作「标准 MIT 项目」
+用于商业售卖或二次发行收费。
+
+本许可只覆盖本项目独立编写的代码。它不授予任何关于「飓风提词器」
+原始作品、其名称、商标、界面设计、文档，或任何第三方开源组件的权利。
+相关声明见 NOTICE.md 与 THIRD_PARTY_NOTICES.md。
+
+==========================================================================
+第一部分 · 附加条款（优先适用）
+==========================================================================
+
+1. 软件本体永久免费 · 禁止商业化滥用
+
+   本软件可供任何个人与组织免费使用，包括个人创作、团队协作与工作场景。
+   未经版权所有者事先书面许可，不得：
+
+   a) 出售、出租、以订阅方式收费，或以其他任何形式对本软件（或其衍生
+      作品）的使用强制收费；不得设置付费墙、付费解锁、会员、功能限制
+      或任何「不付钱就不能用」的机制；
+   b) 在本软件或其衍生作品中植入广告、推广位，或进行任何形式的数据
+      变现 / 遥测获利；
+   c) 将本软件或其衍生作品作为商业产品、商业服务或企业内部收费交付物
+      的核心组成部分对外提供；
+   d) 以「官方版」「正版」「影视飓风出品」「飞书官方」或任何可能使他人
+      误以为存在官方授权、背书或隶属关系的名义进行宣传、分发或署名。
+
+   说明：下方 MIT 基础条款中出现的 "and/or sell copies" 一语，其授权范围
+   已被本条第 1 款明确限缩 —— Notwithstanding the phrase "and/or sell
+   copies" in the MIT terms below, selling the Software itself or imposing
+   any mandatory charge for its use is expressly NOT permitted.
+
+2. 自愿赞助例外（明确允许）
+
+   在不违反第 1 条的前提下，作者及再分发者**可以接受自愿、非强制、
+   与功能无关的赞助、打赏或捐赠**，包括但不限于在项目页面、README、
+   软件「关于」页或发行说明中放置收款码、赞助链接、GitHub Sponsors
+   等入口。此类支持：
+
+   a) **不视为商业化**，不构成对第 1 条的违反；
+   b) 完全出于自愿，不得强制、不得反复弹窗诱导，不得作为使用任何
+      功能、获得更新或取得支持的前提；
+   c) **不构成购买**，不授予付款方任何额外权利、优先权、授权、
+      服务承诺或担保；
+   d) 不得借赞助之名变相收费、设置付费墙、售卖授权，或删改下方
+      第 3 条要求的署名与致谢。
+
+   本项目发布时暂未提供任何收款入口；日后若提供，同样适用本条。
+   放置收款码属于作者个人行为，与影视飓风及任何第三方无关。
+
+3. 免费分发与署名保留
+
+   任何再分发必须保持软件本体免费（第 2 条的自愿赞助不影响此要求），
+   并完整保留本文件、NOTICE.md 中对影视飓风及所有上游开源项目的
+   署名、致谢与权利声明，不得以任何方式删改或隐藏。以源代码或二进制
+   形式再分发时，上述文件须一并随附。
+
+4. 原作权利保留
+
+   「飓风提词器」的创意、产品名称、相关标识、原始实现与使用文档的权利
+   归各自权利人所有。本项目是独立重写的非官方桌面实现，未复制、未包含、
+   未分发原版的任何源代码、素材或商标文件；本项目不对上述内容主张任何
+   权利，也不因本许可而获得任何授权。详见 NOTICE.md。
+
+   若相关权利人认为本项目的名称、内容或使用方式不妥，请通过仓库 Issue
+   联系，我们将及时更名、调整或下架。
+
+5. 上游组件许可不受减损
+
+   第三方组件（Electron、vosk-browser、Vosk 语音模型等）各自适用其原始
+   许可证。本附加条款不减损、不替代上游许可证已授予的权利；如上游许可证
+   与本附加条款冲突，就该第三方组件本身以上游许可证为准。
+   详见 THIRD_PARTY_NOTICES.md。
+
+6. 无担保
+
+   本软件按「现状」提供，不提供任何明示或暗示的担保。作者不对因使用
+   本软件造成的任何损失承担责任。
+
+==========================================================================
+第二部分 · MIT 基础条款
+（仅在不与上述附加条款冲突的范围内适用）
+==========================================================================
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

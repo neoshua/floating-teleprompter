@@ -1,0 +1,29 @@
+# 依赖与构建产物
+node_modules/
+dist/
+_pack_out/
+_verify*/
+_verify*/**
+
+# 由 npm run setup 生成的资产（不入仓库）
+vendor/
+assets/model/
+assets/model.tar.gz
+assets/vosk-model-cn.zip
+assets/*.part
+assets/_model_tmp/
+assets/_backup*
+
+# 本机数据与运行日志（含个人稿件，切勿提交）
+data/
+*.log
+selftest-run.log
+packaged-selftest.log
+final-check.log
+
+# 编辑器 / 系统
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
