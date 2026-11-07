@@ -354,6 +354,22 @@
   }
 
   /* ------------------------------------------------------------ 穿透 / 悬浮 */
+  /* 把真正可点的控件矩形告诉主进程。Windows 下穿透时渲染层收不到 mousemove，
+     主进程轮询系统光标位置，只能靠这份矩形表判断该不该恢复交互。
+     设置 / 调试浮层是整窗高的，必须整体上报，否则只有顶栏底栏两条带能点。 */
+  function reportUIRegions() {
+    const rects = [];
+    const push = (id) => {
+      const el = $(id);
+      if (!el || el.hidden) return;
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0)
+        rects.push({ x: r.left, y: r.top, w: r.width, h: r.height });
+    };
+    push('topbar'); push('controlbar'); push('settings'); push('debug');
+    api.setUIRegions(rects);
+  }
+
   function updateThroughUI() {
     $('btn-through').classList.toggle('on', S.clickThrough);
     app.classList.toggle('hidden-ui', S.clickThrough && !S.interactive && !S.settingsOpen);
@@ -421,7 +437,11 @@
     };
     $('btn-settings').onclick = () => openSettings(!S.settingsOpen);
     $('set-close').onclick = () => openSettings(false);
-    $('btn-debug').onclick = () => { S.debugOpen = !S.debugOpen; $('debug').hidden = !S.debugOpen; };
+    $('btn-debug').onclick = () => {
+      S.debugOpen = !S.debugOpen;
+      $('debug').hidden = !S.debugOpen;
+      reportUIRegions();
+    };
     $('btn-max').onclick = () => api.toggleMaximize();
     $('btn-min').onclick = () => api.minimize();
     $('btn-close').onclick = backToManager;
@@ -499,13 +519,15 @@
     api.on('hotkey:restart', restart);
     api.on('hotkey:toggle-through', () => setClickThrough(!S.clickThrough));
 
-    window.addEventListener('resize', () => { applySettings(); });
+    window.addEventListener('resize', () => { applySettings(); reportUIRegions(); });
   }
 
   function openSettings(on) {
     S.settingsOpen = on;
     $('settings').hidden = !on;
-    if (on && S.clickThrough) { S.interactive = true; api.setIgnoreMouse(false); }
+    if (on) S.interactive = true;
+    // 立即上报：主进程收到后会马上重算命中，不用等下一帧轮询
+    reportUIRegions();
     updateThroughUI();
     if (on) syncSettingsUI();
   }
@@ -604,9 +626,33 @@
       checks.recognizerAudio = sawResult;
       try { rec.remove(); } catch (_) {}
 
+      // 回归验证：设置面板打开时，关闭按钮整个区域都必须可点
+      // （旧逻辑只认顶部 46px 条带，按钮横跨边界导致下半截点不动）
+      openSettings(true);
+      await new Promise(r => setTimeout(r, 150));
+      const closeBtn = $('set-close');
+      const cr = closeBtn.getBoundingClientRect();
+      const hitPts = [];
+      for (const fx of [0.12, 0.5, 0.88])
+        for (const fy of [0.12, 0.5, 0.88])
+          hitPts.push({ x: cr.left + cr.width * fx, y: cr.top + cr.height * fy });
+      const hitRes = await api.hitProbe(hitPts);
+      checks.hitProbePoints = hitRes.length;
+      checks.hitProbeAllInteractive = hitRes.length === 9 && hitRes.every(p => p.interactive);
+      checks.closeBtnDomHit = hitPts.every(p => {
+        const el = document.elementFromPoint(p.x, p.y);
+        return !!el && (el === closeBtn || closeBtn.contains(el));
+      });
+      checks.closeBtnRect = {
+        x: Math.round(cr.left), y: Math.round(cr.top),
+        w: Math.round(cr.width), h: Math.round(cr.height)
+      };
+      openSettings(false);
+
       result.ok = checks.api && checks.voskGlobal && checks.spansRendered > 10 &&
         checks.loadIpc && checks.modelReachable && checks.modelLoaded &&
-        checks.recognizerCreated && checks.recognizerAudio;
+        checks.recognizerCreated && checks.recognizerAudio &&
+        checks.hitProbeAllInteractive && checks.closeBtnDomHit;
     } catch (e) {
       result.error = String((e && e.stack) || e);
     }
@@ -622,6 +668,7 @@
     bindUI();
     applySettings();
     setMode(S.settings.mode || 'timed', true, false);
+    reportUIRegions();
     requestAnimationFrame(tick);
     if (location.search.includes('selftest')) setTimeout(runSelfTest, 600);
   }

@@ -13,8 +13,13 @@ const ZIP_PATH = path.join(DIST, '飓风提词器-桌面版-win64.zip');
 
 const ZIP_ONLY = process.argv.includes('--zip-only');
 
-const README = `飓风提词器 · 桌面版  v1.0.0
+const README = `飓风提词器 · 桌面版  v1.0.1
 ================================================
+
+【v1.0.1 更新】
+· 修复：开启鼠标穿透后，提词设置面板的关闭按钮（×）只有一小块位置能点、
+  其余位置点不动的问题。现在设置面板整体都是可交互区，按钮热区也放大了，
+  面板内所有滑块、开关、按钮在任何位置都能正常操作。
 
 【🙏 致敬影视飓风 · 非官方声明】
 本软件的灵感与核心功能设计，来自影视飓风团队创作并「完全免费、无任何隐藏收费」
@@ -104,7 +109,7 @@ async function main() {
     console.log('[pack] reusing existing build:', appDir);
   } else {
   console.log('[pack] building win32-x64 directory ...');
-  const appPaths = await packager({
+  const packOpts = {
     dir: ROOT,
     out: OUT,
     name: NAME,
@@ -112,7 +117,7 @@ async function main() {
     arch: 'x64',
     electronVersion: '37.2.6',
     icon: path.join(ROOT, 'assets', 'icon.ico'),
-    appVersion: '1.0.0',
+    appVersion: '1.0.1',
     overwrite: true,
     asar: false,
     prune: false,
@@ -141,7 +146,21 @@ async function main() {
       /\.log$/,
       /^\/\.git($|\/)/
     ]
-  });
+  };
+
+  let appPaths;
+  try {
+    appPaths = await packager(packOpts);
+  } catch (e) {
+    const msg = String((e && e.message) || e);
+    if (!/EPERM|EEXIST|ENOTEMPTY|EBUSY|rename/i.test(msg)) throw e;
+    // Windows 上 Defender / 资源管理器偶尔会短暂锁住上一次的输出目录，
+    // 使 packager 重命名模板目录时报 EPERM。换一个全新子目录重试即可。
+    const fallback = path.join(OUT, 'build-' + Date.now());
+    fs.mkdirSync(fallback, { recursive: true });
+    console.log('[pack] output dir busy, retrying in', fallback);
+    appPaths = await packager({ ...packOpts, out: fallback });
+  }
 
   appDir = appPaths[0];
   }

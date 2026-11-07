@@ -24,6 +24,8 @@ contextBridge.exposeInMainWorld('api', {
   openManager: () => ipcRenderer.invoke('win:open-manager'),
   setClickThrough: (on) => ipcRenderer.invoke('prompt:set-click-through', on),
   setIgnoreMouse: (ignore) => ipcRenderer.invoke('prompt:set-ignore-mouse', ignore),
+  setUIRegions: (regions) => ipcRenderer.invoke('prompt:set-ui-regions', regions),
+  hitProbe: (points) => ipcRenderer.invoke('selftest:hit-probe', points),
   toggleMaximize: () => ipcRenderer.invoke('prompt:toggle-maximize'),
   minimize: () => ipcRenderer.invoke('win:minimize'),
   maximize: () => ipcRenderer.invoke('win:maximize'),

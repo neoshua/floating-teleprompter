@@ -241,7 +241,7 @@ function createPrompt() {
     if (!win.isDestroyed() && !win.isVisible()) win.show();
   }, 1500);
   win.on('closed', () => {
-    promptWin = null; clickThrough = false;
+    promptWin = null; clickThrough = false; uiRegions = [];
     stopHoverWatcher(); unregisterHotkeys();
   });
   return win;
@@ -264,39 +264,68 @@ function openPrompt(articleId) {
 
 function setClickThrough(on) {
   clickThrough = !!on;
+  lastIgnore = null;
   if (promptWin && !promptWin.isDestroyed()) {
     // forward 只在 macOS 生效；Windows 由下面的光标轮询负责恢复交互
     promptWin.setIgnoreMouseEvents(clickThrough, { forward: true });
+    lastIgnore = clickThrough;
     promptWin.webContents.send('prompt:click-through', clickThrough);
   }
-  if (clickThrough) startHoverWatcher(); else stopHoverWatcher();
+  if (clickThrough) { startHoverWatcher(); refreshHover(); }
+  else stopHoverWatcher();
   return clickThrough;
 }
 
 /* Windows 上 ignoreMouseEvents 会连 mousemove 一起吞掉，
-   主进程直接轮询系统光标位置：鼠标进入顶栏/底栏时临时恢复可交互。 */
+   主进程直接轮询系统光标位置。可交互区域由渲染层上报真实控件矩形
+   （顶栏 / 底栏 / 打开的设置或调试浮层），避免用硬编码条带漏判：
+   旧逻辑只认顶部 46px 和底部 88px，导致整窗高的设置面板里
+   只有这两条带能点，关闭按钮横跨 46px 边界就出现「半截点不动」。 */
 let hoverTimer = null;
+let uiRegions = [];
+let lastIgnore = null;
+const HIT_PAD = 8;   // 命中容差，吸收窗口边框 / 缩放 / 圆角带来的偏差
+
+function fallbackRegions(b) {
+  return [
+    { x: 0, y: 0, w: b.width, h: 46 },
+    { x: 0, y: b.height - 88, w: b.width, h: 88 }
+  ];
+}
+function activeRegions(b) {
+  return uiRegions.length ? uiRegions : fallbackRegions(b);
+}
+function inRegions(x, y, b) {
+  return activeRegions(b).some(r =>
+    x >= r.x - HIT_PAD && x <= r.x + r.w + HIT_PAD &&
+    y >= r.y - HIT_PAD && y <= r.y + r.h + HIT_PAD);
+}
+function applyIgnore(ignore, force) {
+  if (!promptWin || promptWin.isDestroyed()) return;
+  ignore = !!ignore;
+  if (!force && lastIgnore === ignore) return;
+  lastIgnore = ignore;
+  promptWin.setIgnoreMouseEvents(ignore, { forward: true });
+  promptWin.webContents.send('prompt:hover-ui', !ignore);
+}
+function refreshHover(force) {
+  if (!clickThrough || !promptWin || promptWin.isDestroyed() || !promptWin.isVisible()) return;
+  try {
+    const p = screen.getCursorScreenPoint();
+    const b = promptWin.getBounds();
+    const x = p.x - b.x, y = p.y - b.y;
+    const inside = x >= 0 && x <= b.width && y >= 0 && y <= b.height;
+    applyIgnore(!(inside && inRegions(x, y, b)), force);
+  } catch (_) {}
+}
 function startHoverWatcher() {
   stopHoverWatcher();
-  let last = null;
-  hoverTimer = setInterval(() => {
-    if (!clickThrough || !promptWin || promptWin.isDestroyed() || !promptWin.isVisible()) return;
-    let interactive = false;
-    try {
-      const p = screen.getCursorScreenPoint();
-      const b = promptWin.getBounds();
-      const relY = p.y - b.y;
-      const inside = p.x >= b.x && p.x <= b.x + b.width && p.y >= b.y && p.y <= b.y + b.height;
-      interactive = inside && (relY <= 46 || relY >= b.height - 88);
-    } catch (_) { return; }
-    if (interactive === last) return;
-    last = interactive;
-    promptWin.setIgnoreMouseEvents(!interactive, { forward: true });
-    promptWin.webContents.send('prompt:hover-ui', interactive);
-  }, 110);
+  lastIgnore = null;
+  hoverTimer = setInterval(() => refreshHover(), 40);
 }
 function stopHoverWatcher() {
   if (hoverTimer) { clearInterval(hoverTimer); hoverTimer = null; }
+  lastIgnore = null;
   try {
     if (promptWin && !promptWin.isDestroyed()) {
       promptWin.setIgnoreMouseEvents(false);
@@ -415,9 +444,29 @@ function bindIpc() {
   });
   ipcMain.handle('prompt:set-click-through', (_e, on) => setClickThrough(on));
   ipcMain.handle('prompt:set-ignore-mouse', (_e, ignore) => {
-    if (clickThrough && promptWin && !promptWin.isDestroyed())
-      promptWin.setIgnoreMouseEvents(!!ignore, { forward: true });
+    // 与轮询共用 lastIgnore，避免渲染层调用后轮询状态不同步而把穿透偷偷打开
+    if (promptWin && !promptWin.isDestroyed()) {
+      const v = !!ignore && clickThrough;
+      promptWin.setIgnoreMouseEvents(v, { forward: true });
+      lastIgnore = v;
+    }
     return true;
+  });
+  // 渲染层上报真实可交互矩形；收到后立即重算一次，不必等下一帧
+  ipcMain.handle('prompt:set-ui-regions', (_e, regions) => {
+    uiRegions = Array.isArray(regions)
+      ? regions.filter(r => r && [r.x, r.y, r.w, r.h].every(Number.isFinite) && r.w > 0 && r.h > 0).slice(0, 16)
+      : [];
+    refreshHover();
+    return uiRegions.length;
+  });
+  // 自检用：给定窗口内坐标，返回穿透状态下是否会被判为可交互
+  ipcMain.handle('selftest:hit-probe', (_e, points) => {
+    if (!IS_SELFTEST || !promptWin || promptWin.isDestroyed()) return [];
+    const b = promptWin.getBounds();
+    return (Array.isArray(points) ? points : []).map(pt => ({
+      x: pt.x, y: pt.y, interactive: inRegions(Number(pt.x), Number(pt.y), b)
+    }));
   });
   ipcMain.handle('prompt:set-opacity', (_e, v) => {
     if (promptWin && !promptWin.isDestroyed()) promptWin.webContents.send('prompt:opacity', v);

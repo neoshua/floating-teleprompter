@@ -1,6 +1,6 @@
 {
   "name": "floating-teleprompter",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "productName": "飓风提词器 桌面版",
   "description": "非官方独立重写的桌面悬浮透明提词器：离线、免安装、永久免费。灵感来自影视飓风「飓风提词器」。",
   "main": "main.js",
