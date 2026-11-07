@@ -13,8 +13,21 @@ const ZIP_PATH = path.join(DIST, '飓风提词器-桌面版-win64.zip');
 
 const ZIP_ONLY = process.argv.includes('--zip-only');
 
-const README = `飓风提词器 · 桌面版  v1.0.1
+const README = `飓风提词器 · 桌面版  v1.0.2
 ================================================
+
+【v1.0.2 更新 · 应用内增量更新】
+· 新增检查更新：顶栏「检查更新」或状态栏版本号即可查看是否有新版本；
+  启动时也会自动检查一次（可在更新窗口关闭）。发现新版本时按钮会出现红点。
+· 一键更新：点「下载并安装」只下载程序代码补丁（约 2 MB），
+  不用再重复下载 150 MB 完整安装包；下载完成后点「重启生效」即可。
+· 安全：更新包带整包与逐文件 SHA-256 校验，只允许替换程序代码，
+  绝不触碰 data/ 稿件、语音模型与 Electron 运行时；安装前自动备份旧文件
+  到 data/backups/，校验或写入失败会自动回滚。
+· 隐私：只从 GitHub 读取公开版本清单和更新包，不上传稿件、设置或任何本机信息；
+  关闭自动检查后软件完全离线运行。
+· 注意：v1.0.1 及更早版本没有内置更新器，需要手动下载这一次完整包；
+  从 v1.0.2 起，后续版本都可以在软件内一键更新。
 
 【v1.0.1 更新】
 · 修复：开启鼠标穿透后，提词设置面板的关闭按钮（×）只有一小块位置能点、
@@ -40,7 +53,10 @@ const README = `飓风提词器 · 桌面版  v1.0.1
 1. 把整个文件夹解压到一个普通目录（建议不要放在 C:\\Program Files 等需要管理员权限的位置）。
 2. 双击「飓风提词器.exe」即可，无需安装、无需联网、无需登录。
 3. 首次运行 Windows 可能提示「已保护你的电脑」——这是未签名程序的正常提示，
-   点「更多信息」→「仍要运行」即可。软件不含任何联网上传行为。
+   点「更多信息」→「仍要运行」即可。软件不含任何联网上传、统计或遥测逻辑；
+   唯一联网的是可关闭的「检查更新」，只读取 GitHub 公开版本清单，不上传任何数据。
+4. 以后有新版本时，顶栏「检查更新」会出现红点，在软件内下载约 2 MB 的
+   代码补丁并重启即可，不必重新下载完整安装包（v1.0.2 起支持）。
 
 【核心功能】
 · 稿件管理：新建 / 编辑 / 删除 / 搜索，本地保存，随文件夹一起拷走。
@@ -56,6 +72,8 @@ const README = `飓风提词器 · 桌面版  v1.0.1
 · 鼠标穿透：开启后文字区域不拦鼠标，可以直接点到下面的软件；
   把鼠标移到窗口顶部或底部会自动显示控制条并恢复可操作。
 · 本地「AI 优化正文」：纯规则整理标点、断句、段落节奏，不调用任何外部服务。
+· 应用内更新：自动 / 手动检查新版本，一键下载约 2 MB 代码补丁并重启生效，
+  不重下完整安装包；全程 SHA-256 校验，安装前备份、失败自动回滚。
 
 【快捷键】（提词窗聚焦时）
   空格        播放 / 暂停
@@ -72,6 +90,8 @@ const README = `飓风提词器 · 桌面版  v1.0.1
 
 【数据】
 稿件与设置保存在本目录的 data\\store.json。换电脑时把整个文件夹复制过去即可。
+每次应用内更新会把被替换的旧代码备份到 data\\backups\\，更新失败会自动回滚；
+data\\store.json 和语音模型在任何更新中都不会被改动。
 托盘图标（右下角）可快速显示/隐藏提词窗、开关穿透、打开数据目录、
 查看「关于与致谢」（含对影视飓风的致谢与非官方声明）、退出。
 
@@ -117,7 +137,7 @@ async function main() {
     arch: 'x64',
     electronVersion: '37.2.6',
     icon: path.join(ROOT, 'assets', 'icon.ico'),
-    appVersion: '1.0.1',
+    appVersion: '1.0.2',
     overwrite: true,
     asar: false,
     prune: false,
@@ -186,8 +206,8 @@ async function main() {
   // 核对关键资产确实进了包
   const appResources = path.join(appDir, 'resources', 'app');
   const required = [
-    'main.js', 'preload.js', 'package.json',
-    'src/index.html', 'src/prompt.html', 'src/prompt.js',
+    'main.js', 'preload.js', 'updater.js', 'package.json',
+    'src/index.html', 'src/manager.js', 'src/prompt.html', 'src/prompt.js',
     'vendor/vosk.js', 'assets/model.tar.gz', 'assets/icon.ico'
   ];
   for (const rel of required) {

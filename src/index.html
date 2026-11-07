@@ -16,6 +16,7 @@
   </div>
   <div class="tb-drag"></div>
   <div class="tb-right">
+    <button class="tb-btn update-entry" id="btn-update" title="检查软件更新">检查更新<span class="upd-dot" id="upd-dot" hidden></span></button>
     <button class="tb-btn about-entry" id="btn-about" title="关于与致谢">关于 · 致谢</button>
     <button class="tb-btn" id="btn-data" title="打开数据目录">数据目录</button>
     <button class="tb-btn sys" id="btn-min" title="最小化">─</button>
@@ -62,7 +63,7 @@
   <span class="spacer"></span>
   <span id="status-asr">离线语音模型：检查中…</span>
   <span class="dot">·</span>
-  <span>v1.0.1</span>
+  <button class="ver-chip" id="btn-version" title="检查软件更新">v1.0.2</button>
 </footer>
 
 <!-- 新建 / 编辑弹窗 -->
@@ -118,7 +119,7 @@
       <div class="about-mark">✦</div>
       <div class="about-heading">
         <h2>关于 · 致谢</h2>
-        <p>飓风提词器 · 桌面版　v1.0.1　｜　非官方独立作品</p>
+        <p>飓风提词器 · 桌面版　v1.0.2　｜　非官方独立作品</p>
       </div>
       <button class="icon-btn" id="about-close" title="关闭">×</button>
     </div>
@@ -162,7 +163,9 @@
           再分发须保持免费并保留署名致谢。</p>
         <p class="license-note">官方并未发布过正式开源许可证；我们据其公开表述
           「完全免费」与「可一键领取同款自行修改」落实为上述承诺，
-          详见随包 <code>NOTICE.md</code>。</p>
+          详见随包 <code>NOTICE.md</code>。<br>
+          隐私：唯一的联网行为是可关闭的「检查更新」，仅从 GitHub 读取公开版本清单
+          与更新包，不上传稿件、设置或任何本机信息；关闭后完全离线运行。</p>
       </section>
 
       <section class="about-meta">
@@ -175,6 +178,46 @@
       <span>由社区独立开发，免费分享给所有创作者</span>
       <button class="btn-ghost" id="about-repo">项目仓库 ↗</button>
       <button class="btn-primary" id="about-ok">知道了</button>
+    </div>
+  </div>
+</div>
+
+<!-- 软件更新：应用内检测 + 增量补丁安装，不必重下完整安装包 -->
+<div class="modal-mask" id="update" hidden>
+  <div class="update-box">
+    <div class="update-head">
+      <div class="update-mark">↻</div>
+      <div class="update-heading">
+        <h2>软件更新</h2>
+        <p id="upd-sub">当前版本 v1.0.2</p>
+      </div>
+      <button class="icon-btn" id="upd-close" title="关闭">×</button>
+    </div>
+
+    <div class="update-body">
+      <div class="upd-state" id="upd-state">正在检查更新…</div>
+      <div class="upd-notes" id="upd-notes" hidden></div>
+      <div class="upd-progress" id="upd-progress" hidden>
+        <div class="upd-bar"><i id="upd-bar-fill"></i></div>
+        <span id="upd-progress-text"></span>
+      </div>
+      <div class="upd-meta" id="upd-meta" hidden></div>
+
+      <label class="upd-toggle">
+        <input type="checkbox" id="upd-auto" checked>
+        <span>启动时自动检查是否有新版本</span>
+      </label>
+      <p class="upd-privacy">检查更新只从 GitHub 读取公开的版本清单与更新包，
+        <b>不上传稿件、设置或任何本机信息</b>；关闭后软件完全离线运行。
+        更新只替换程序代码（通常 1~2 MB），<code>data/</code> 里的稿件与设置原样保留，
+        被替换的旧文件会自动备份到 <code>data/backups/</code>，安装失败会自动回滚。</p>
+    </div>
+
+    <div class="upd-foot">
+      <button class="link-btn" id="upd-release">前往下载页 ↗</button>
+      <span class="spacer"></span>
+      <button class="btn-ghost" id="upd-check">重新检查</button>
+      <button class="btn-primary" id="upd-action" disabled>检查更新</button>
     </div>
   </div>
 </div>

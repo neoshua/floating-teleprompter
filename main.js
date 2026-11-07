@@ -7,6 +7,7 @@ const { app, BrowserWindow, ipcMain, globalShortcut, Tray, Menu, screen,
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const { createUpdater } = require('./updater');
 
 const ROOT = __dirname;
 const ICON_PATH = path.join(ROOT, 'assets', 'icon.ico');
@@ -18,6 +19,7 @@ let tray = null;
 let serverPort = 0;
 let clickThrough = false;
 let promptHiddenByUser = false;
+let updater = null;
 
 /* ---------------------------------------------------------------- 数据存储 */
 // 绿色版：数据放在 exe 同级 data/，随目录一起拷走；不可写时回退到 userData
@@ -371,17 +373,20 @@ function unregisterHotkeys() {
 }
 
 /* ---------------------------------------------------------------- 托盘 */
-function showAbout() {
+function sendToManager(channel) {
   if (!managerWin || managerWin.isDestroyed()) managerWin = createManager();
   managerWin.show();
   managerWin.focus();
   const send = () => {
-    if (managerWin && !managerWin.isDestroyed()) managerWin.webContents.send('app:show-about');
+    if (managerWin && !managerWin.isDestroyed()) managerWin.webContents.send(channel);
   };
   if (managerWin.webContents.isLoading()) {
     managerWin.webContents.once('did-finish-load', () => setTimeout(send, 150));
   } else setTimeout(send, 60);
 }
+
+function showAbout() { sendToManager('app:show-about'); }
+function showUpdateDialog() { sendToManager('app:show-update'); }
 
 function createTray() {
   if (!fs.existsSync(ICON_PATH)) return;
@@ -400,6 +405,7 @@ function createTray() {
     { type: 'separator' },
     { label: '打开数据目录', click: () => shell.openPath(DATA_DIR) },
     { label: '关于与致谢', click: () => showAbout() },
+    { label: '检查更新…', click: () => showUpdateDialog() },
     { type: 'separator' },
     { label: '退出', click: () => { app.isQuitting = true; app.quit(); } }
   ]);
@@ -522,11 +528,28 @@ function bindIpc() {
     dataDir: DATA_DIR, modelDir: path.join(ROOT, 'assets', 'model'),
     packaged: app.isPackaged, version: app.getVersion(), port: serverPort
   }));
+
+  /* 应用内增量更新（只替换代码，不重下 150MB 完整包） */
+  ipcMain.handle('update:check', (_e, force) => updater.check(!!force));
+  ipcMain.handle('update:install', (_e, info) => updater.install(info));
+  ipcMain.handle('update:restart', () => { updater.restart(); return true; });
+  ipcMain.handle('update:settings', () => updater.getSettings());
+  ipcMain.handle('update:set-settings', (_e, patch) => updater.setSettings(patch || {}));
   ipcMain.handle('audio:permission', () => true);
 
   // 渲染层日志回传（自检用）
   ipcMain.on('log', (_e, ...args) => console.log('[renderer]', ...args));
   ipcMain.on('selftest:result', async (_e, result) => {
+    // 主进程侧的更新器回归项（纯本地、不联网）并入交付级自检
+    try {
+      result.checks = result.checks || {};
+      result.checks.updater = updater.selfTest();
+      if (!result.checks.updater.ok) result.ok = false;
+    } catch (e) {
+      result.checks = result.checks || {};
+      result.checks.updater = { ok: false, error: String(e) };
+      result.ok = false;
+    }
     try { fs.writeFileSync(path.join(DATA_DIR, 'selftest.json'), JSON.stringify(result, null, 2)); } catch (_) {}
     console.log('[selftest]', JSON.stringify(result));
     if (!IS_SELFTEST) return;
@@ -545,9 +568,25 @@ function bindIpc() {
           const imgAbout = await win.webContents.capturePage();
           fs.writeFileSync(path.join(DATA_DIR, 'preview-about.png'), imgAbout.toPNG());
           await win.webContents.executeJavaScript("document.getElementById('about').hidden=true");
+
+          // 确认更新入口、弹窗与运行时版本号确实都渲染出来了
+          const ui = await win.webContents.executeJavaScript(`(() => {
+            const q = id => document.getElementById(id);
+            return {
+              panel: !!q('update'), entry: !!q('btn-update'), action: !!q('upd-action'),
+              autoToggle: !!q('upd-auto'), release: !!q('upd-release'),
+              versionChip: (q('btn-version') || {}).textContent || ''
+            };
+          })()`);
+          result.checks.updateUI = ui;
+          result.checks.updateUIOk = !!(ui.panel && ui.entry && ui.action &&
+            ui.autoToggle && ui.release && /^v?\d+\.\d+\.\d+$/.test(ui.versionChip.trim()));
+          if (!result.checks.updateUIOk) result.ok = false;
         }
       }
     } catch (e) { console.log('[selftest] capture skipped:', e.message); }
+    // 合并完主进程侧回归项后再落盘一次，保证交付自检结果完整
+    try { fs.writeFileSync(path.join(DATA_DIR, 'selftest.json'), JSON.stringify(result, null, 2)); } catch (_) {}
     setTimeout(() => app.exit(0), 250);
   });
 }
@@ -566,9 +605,27 @@ async function boot() {
   const { port } = await startStaticServer();
   serverPort = port;
 
+  updater = createUpdater({
+    appRoot: ROOT,
+    dataDir: DATA_DIR,
+    version: app.getVersion(),
+    packaged: app.isPackaged,
+    emit: (channel, payload) => broadcast(channel, payload),
+    restart: () => { app.isQuitting = true; app.relaunch(); app.exit(0); }
+  });
+
   bindIpc();
   createTray();
   managerWin = createManager();
+
+  // 启动后静默检查一次（只读 GitHub 上的公开版本清单，不上传任何数据）。
+  // 可在「软件更新」里关闭；自检模式不联网，避免干扰离线验证。
+  if (!IS_SELFTEST && updater.getSettings().autoCheck) {
+    setTimeout(async () => {
+      try { broadcast('update:state', await updater.check(false)); }
+      catch (e) { console.log('[update] auto check failed:', e.message); }
+    }, 3000);
+  }
 
   if (IS_SELFTEST) {
     // 无界面自检：创建提词窗并让渲染层报告各模块可用性

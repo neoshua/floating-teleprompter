@@ -5,7 +5,8 @@ const ALLOWED_CHANNELS = new Set([
   'prompt:load', 'prompt:content', 'prompt:opacity', 'prompt:click-through', 'prompt:hover-ui',
   'hotkey:toggle-play', 'hotkey:nudge-up', 'hotkey:nudge-down',
   'hotkey:restart', 'hotkey:toggle-through',
-  'app:show-about'
+  'app:show-about', 'app:show-update',
+  'update:state', 'update:progress'
 ]);
 
 contextBridge.exposeInMainWorld('api', {
@@ -16,6 +17,13 @@ contextBridge.exposeInMainWorld('api', {
   appInfo: () => ipcRenderer.invoke('app:info'),
   openDataDir: () => ipcRenderer.invoke('app:open-data-dir'),
   openExternal: (url) => ipcRenderer.invoke('app:open-external', url),
+
+  /* 应用内更新 */
+  checkUpdate: (force) => ipcRenderer.invoke('update:check', !!force),
+  installUpdate: (info) => ipcRenderer.invoke('update:install', info),
+  restartApp: () => ipcRenderer.invoke('update:restart'),
+  getUpdateSettings: () => ipcRenderer.invoke('update:settings'),
+  setUpdateSettings: (patch) => ipcRenderer.invoke('update:set-settings', patch),
 
   /* 窗口 */
   openPrompt: (id) => ipcRenderer.invoke('prompt:open', id),
