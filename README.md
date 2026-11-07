@@ -74,7 +74,9 @@
 
 ### 方式一：直接用（推荐给大多数创作者）
 
-到 [Releases](https://github.com/neoshua/floating-teleprompter/releases) 下载 `飓风提词器-桌面版-win64.zip`：
+到 [Releases](https://github.com/neoshua/floating-teleprompter/releases) 下载
+`FloatingTeleprompter-win64.zip`（为兼容各地网络环境，Release 附件使用英文文件名；
+解压出来的文件夹与 `飓风提词器.exe` 仍是中文名）：
 
 1. 解压到任意普通目录（**不要**放在 `C:\Program Files` 等需管理员权限的位置）
 2. 双击 `飓风提词器.exe` —— 无需安装、无需联网、无需登录
