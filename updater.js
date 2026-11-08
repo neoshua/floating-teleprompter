@@ -20,6 +20,7 @@ const path = require('path');
 const https = require('https');
 const zlib = require('zlib');
 const crypto = require('crypto');
+const { execFileSync } = require('child_process');
 
 const REPO = 'neoshua/floating-teleprompter';
 const LATEST_ASSET = `https://github.com/${REPO}/releases/latest/download/latest.json`;
@@ -372,6 +373,67 @@ function ensureWritableAppRoot(appRoot, platform = process.platform) {
   }
 }
 
+/* ------------------------------------------- macOS 更新后的「可打开」自愈 */
+
+/**
+ * 从代码目录推导本应用的 .app bundle 根路径，并严格校验结构。
+ * 打包后 __dirname（appRoot）是 <...app>/Contents/Resources/app。
+ * 任何一步对不上就返回 null —— 绝不把 xattr / codesign 作用到未经确认的目录。
+ */
+function macBundleRoot(appRoot) {
+  const root = path.resolve(appRoot);
+  const bundle = path.resolve(root, '..', '..', '..');
+  const contents = path.join(bundle, 'Contents');
+  if (!bundle.endsWith('.app')) return null;
+  if (path.resolve(contents, 'Resources', 'app') !== root) return null;
+  if (!fs.existsSync(path.join(contents, 'Info.plist'))) return null;
+  if (!fs.existsSync(path.join(contents, 'MacOS'))) return null;
+  return bundle;
+}
+
+/**
+ * 补丁写完后，恢复 macOS .app 的「能双击打开」状态。
+ *
+ * 背景：v1.0.4 起打包时会做 ad-hoc 签名，CodeResources 把
+ * Contents/Resources/app/*.js 的哈希封进 seal。应用内更新恰好会改写这些 JS，
+ * 签名随即失效；此时若 .app 仍带着下载时系统加的 com.apple.quarantine，
+ * Gatekeeper 有可能重新评估并报「已损坏，需要移到废纸篓」。
+ * 真机验证结论：清掉 quarantine 后，非 hardened runtime 的 app 即使 seal
+ * 不匹配也能正常启动 —— 所以清隔离属性是主力，重签是保险。
+ *
+ * 两步都 best-effort：普通用户 Mac 上不一定装了 Xcode 命令行工具（没有
+ * codesign），但 xattr 是系统自带的。任何失败都只记录、不抛错 —— 文件此时
+ * 已经写好了，把「更新成功」误判为失败并回滚反而更糟。
+ *
+ * 作用域只限本应用自己的 .app：路径由 macBundleRoot() 推导并校验，
+ * 不接受外部传入；不触碰 .app 外的 data/ 等用户数据目录。
+ */
+function finalizeMacBundle(appRoot, opts = {}) {
+  const platform = opts.platform || process.platform;
+  const run = opts.run || ((cmd, args) => execFileSync(cmd, args, {
+    encoding: 'utf8', timeout: 60000, stdio: ['ignore', 'pipe', 'pipe']
+  }));
+  const result = {
+    attempted: false, bundle: null,
+    quarantineCleared: false, resigned: false, notes: []
+  };
+  if (platform !== 'darwin') return result;
+  const bundle = macBundleRoot(appRoot);
+  if (!bundle) return result;         // 源码模式 / 非标准布局，跳过
+  result.attempted = true;
+  result.bundle = bundle;
+
+  try { run('xattr', ['-cr', bundle]); result.quarantineCleared = true; }
+  catch (e) { result.notes.push('xattr: ' + (e.code || e.message)); }
+
+  try {
+    run('codesign', ['--force', '--deep', '--sign', '-', '--timestamp=none', bundle]);
+    result.resigned = true;
+  } catch (e) { result.notes.push('codesign: ' + (e.code || e.message)); }
+
+  return result;
+}
+
 /* ------------------------------------------------------------- 配置读写 */
 function createUpdater(cfg) {
   const { appRoot, dataDir, version, packaged, emit, restart } = cfg;
@@ -493,6 +555,20 @@ function createUpdater(cfg) {
       notify('update:progress', { phase: 'apply', percent: 100, text: '正在备份并安装…' });
       const res = writeFiles(appRoot, verified.pending, { version, dataDir, label: 'to-v' + state.latest });
       res.record.to = state.latest;
+      // 补丁改写了 .app 内的 JS，ad-hoc 签名封印随之失效。清掉隔离属性并尽量
+      // 重签，避免下次启动又被 Gatekeeper 判成「已损坏」。失败只记录不回滚。
+      if (process.platform === 'darwin' && packaged) {
+        const macFix = finalizeMacBundle(appRoot);
+        res.record.macSignature = {
+          attempted: macFix.attempted,
+          quarantineCleared: macFix.quarantineCleared,
+          resigned: macFix.resigned,
+          notes: macFix.notes
+        };
+        if (macFix.notes.length) {
+          console.warn('[updater] macOS 签名自愈部分失败:', macFix.notes.join('; '));
+        }
+      }
       try {
         fs.writeFileSync(path.join(dataDir, 'last-update.json'), JSON.stringify(res.record, null, 2), 'utf8');
       } catch (_) {}
@@ -566,5 +642,6 @@ function createUpdater(cfg) {
 
 module.exports = {
   createUpdater, compareVersions, isSafeRel, readZip, sha256,
-  verifyPatch, writeFiles, selectFull, fullKey, ensureWritableAppRoot
+  verifyPatch, writeFiles, selectFull, fullKey, ensureWritableAppRoot,
+  macBundleRoot, finalizeMacBundle
 };

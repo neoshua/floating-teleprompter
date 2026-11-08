@@ -62,7 +62,11 @@ APP="$STAGE/mnt/$NAME.app"
 [[ -f "$STAGE/mnt/使用说明.txt" ]]                || { echo "FAIL: 缺使用说明.txt" >&2; exit 1; }
 LINKS="$(find "$APP/Contents/Frameworks" -type l | wc -l | tr -d ' ')"
 [[ "$LINKS" -gt 0 ]]                            || { echo "FAIL: Frameworks 符号链接丢失 ($LINKS)" >&2; exit 1; }
+# 签名必须能穿过「zip → 解压 → hdiutil 打包 → 只读挂载」整条链路活下来。
+# 缺了 CodeResources 就会在用户机器上被 Gatekeeper 判成「已损坏」。
+[[ -f "$APP/Contents/_CodeSignature/CodeResources" ]] || { echo "FAIL: DMG 里签名封印资源丢失" >&2; exit 1; }
+codesign --verify --deep "$APP" >/dev/null 2>&1  || { echo "FAIL: DMG 里 .app 签名无效" >&2; exit 1; }
 hdiutil detach "$STAGE/mnt" >/dev/null
 
-echo "DMG_OK | $OUT | symlinks=$LINKS | $(du -h "$OUT" | cut -f1)"
+echo "DMG_OK | $OUT | symlinks=$LINKS | adhoc_signature=valid | $(du -h "$OUT" | cut -f1)"
 shasum -a 256 "$OUT"

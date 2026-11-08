@@ -11,7 +11,7 @@
 const packager = require('@electron/packager');
 const path = require('path');
 const fs = require('fs');
-const { execFileSync } = require('child_process');
+const { execFileSync, spawnSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
 // packager 不允许把源目录复制到它自己的子目录，所以构建输出放到项目外
@@ -46,15 +46,17 @@ const ZIP_PATH = path.join(DIST, IS_MAC
 const README_TPL = `飓风提词器 · 桌面版  v{{VERSION}} · {{PLATFORM_NAME}}
 ================================================
 
-【v1.0.3 更新 · macOS 正式发布与 DMG 安装】
-· macOS 版首次发布：Apple 芯片（arm64）与 Intel（x64）各一个 DMG，打开后把
-  「飓风提词器.app」拖进 Applications 即可，能正常出现在应用列表 / 启动台。
-· 应用内更新在 macOS 上同样可用，与 Windows 共用同一套检查、增量补丁、
-  SHA-256 校验、备份回滚与重启生效逻辑；完整包按「平台-架构」分发，
-  Mac 用户不会被推 Windows 安装包。
+【v1.0.4 更新 · 修复 macOS「已损坏，需要移到废纸篓」】
+· macOS 版首次打开不再报「已损坏」。上一版 .app 内残留 Electron 官方的签名标记，
+  却缺少对应的签名封印资源；现在打包时会生成有效的本机临时（ad-hoc）签名。
+· 本版本仍未做 Apple Developer 签名与公证，首次打开只需在 Finder 里按住
+  Control 点按 .app →「打开」→ 再点「打开」一次；不需要再执行任何终端命令。
+· 应用内更新在 macOS 上装完补丁后会自动清理隔离属性并尝试重签，避免改写
+  .app 内代码后签名失效、下次启动又打不开。
+· Apple 芯片（arm64）与 Intel（x64）各一个 DMG，打开后把 .app 拖进
+  Applications 即可出现在应用列表 / 启动台；完整包按「平台-架构」分发。
 · DMG 挂载出来的磁盘映像是只读的，请先拖出 .app 再使用；直接在挂载盘里
   运行会让以后的应用内更新因无法写入而中止（预检会提示，不会损坏程序）。
-· 本版本仍未做 Apple 签名 / 公证，首次打开需按 Control 点按 →「打开」。
 
 【v1.0.2 更新 · 应用内增量更新】
 · 新增检查更新：顶栏「检查更新」或状态栏版本号即可查看是否有新版本；
@@ -156,12 +158,14 @@ const MAC_RUN = `【怎么安装（macOS · {{ARCH_NAME}}）】
    双击运行：以后点应用内「下载并安装」更新时，新代码写不进 .app，会被
    写权限预检拦下（会给出提示并自动中止，不会弄坏程序，也不会白下载）。
    把 .app 拖进「应用程序」或任意普通文件夹再打开，就一切正常。
-2. 本版本【未做 Apple 签名与公证】，首次打开会被系统拦下，这是未签名程序的
-   正常提示，两种方式任选其一：
-   方式一：在 Finder 里按住 Control 点按 .app →「打开」→ 再点「打开」；
-   方式二：终端执行  xattr -cr "/Applications/飓风提词器.app"
-   处理一次之后就能正常双击启动。软件不含任何联网上传、统计或遥测逻辑；
-   唯一联网的是可关闭的「检查更新」，只读取 GitHub 公开版本清单。
+2. 首次打开会提示「无法验证开发者」——本版本已做本机临时（ad-hoc）签名，
+   但【未做 Apple Developer 签名与公证】，这是所有非商店应用的常规检查。
+   在 Finder 里按住 Control 点按 .app →「打开」→ 再点「打开」即可，只需一次；
+   之后就能正常双击启动，也能拖到程序坞固定。
+   【不需要再执行 xattr / codesign 等终端命令】——那是 v1.0.3 及更早版本遇到
+   「已损坏，移到废纸篓」时的临时处理办法，本版本已从打包环节修好。
+   软件不含任何联网上传、统计或遥测逻辑；唯一联网的是可关闭的「检查更新」，
+   只读取 GitHub 公开版本清单，不上传任何数据。
 3. 首次使用「语音跟读」时系统会询问麦克风权限，请选择「允许」。
    音频只在本机离线识别，不上传、不保存。
 4. 提词窗已设为在所有桌面空间（含全屏应用）可见。若某个全屏 App 仍盖住它，
@@ -169,9 +173,9 @@ const MAC_RUN = `【怎么安装（macOS · {{ARCH_NAME}}）】
 5. 关闭主窗口只会隐藏，程序仍在菜单栏，点菜单栏图标可重新打开；真正退出用
    ⌘Q 或菜单栏里的「退出」。以后有新版本，顶栏「检查更新」会出现红点，
    在软件内下载约 2 MB 代码补丁并重启即可（Windows / macOS 用的是同一套更新器）。
-   更新只替换 .app 内的 JS 代码，稿件、设置、语音模型与麦克风授权都不受影响；
-   本版本未做 Apple 签名，若你自行用 codesign 给 .app 签过名，更新会使签名
-   失效，这种情况请改用完整包覆盖安装。`;
+   更新只替换 .app 内的 JS 代码，稿件、设置、语音模型与麦克风授权都不受影响。
+   改写 .app 会让签名封印失效，本版本会在装完补丁后自动清理隔离属性并尝试
+   重签，不会因此打不开；这两步即使失败也不影响更新结果。`;
 
 const LOCAL_HOTKEYS = `【快捷键】（提词窗聚焦时）
   空格        播放 / 暂停
@@ -246,6 +250,51 @@ function pruneLocales(appDir) {
   };
   walk(appDir);
   return removed;
+}
+
+/**
+ * 给 macOS .app 做 ad-hoc 重签名（不带 hardened runtime、不公证）。
+ *
+ * 【为什么必须签】@electron/packager 把官方 Electron.app 改名、注入
+ * Resources/app、重写 Info.plist 之后不会重签。产物里主二进制与 Electron
+ * Framework 仍带着官方的 LC_CODE_SIGNATURE，却没有对应的
+ * Contents/_CodeSignature/CodeResources —— 等于「二进制声称已签名，
+ * 封印资源却不存在」。用户下载的 DMG 带 com.apple.quarantine，Gatekeeper
+ * 碰到「隔离属性 + 无效签名」在新版 macOS 上直接报「已损坏，需要移到废纸篓」，
+ * 连右键「打开」都救不回来（v1.0.3 真机复现）。
+ *
+ * 重建一份有效的 ad-hoc 签名后，提示会降级为普通的「无法验证开发者」，
+ * 用户按 Control 点按 →「打开」放行一次即可，这是未公证应用的常规体验。
+ * 想连这一步都省掉只能做 Developer ID 签名 + 公证，需要 Apple 账号。
+ *
+ * 【刻意不加 --options runtime】hardened runtime 会在运行时校验 bundle seal，
+ * 而应用内增量更新正是往 .app/Contents/Resources/app/ 写 JS，会立刻把 app
+ * 弄坏。更新器在写完补丁后会自行清理隔离属性并重签，见 updater.js。
+ */
+function signMacApp(appDir) {
+  const app = path.join(appDir, `${NAME}.app`);
+  if (!fs.existsSync(path.join(app, 'Contents', 'Info.plist'))) {
+    throw new Error('签名前找不到有效的 .app: ' + app);
+  }
+  // --force 覆盖内嵌的旧签名，--deep 递归处理 Helpers 与 Frameworks。
+  // --timestamp=none 避免 ad-hoc 签名去联网请求时间戳。
+  execFileSync('codesign',
+    ['--force', '--deep', '--sign', '-', '--timestamp=none', app],
+    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+
+  if (!fs.existsSync(path.join(app, 'Contents', '_CodeSignature', 'CodeResources'))) {
+    throw new Error('签名后缺 _CodeSignature/CodeResources，产物仍会被判为已损坏');
+  }
+  execFileSync('codesign', ['--verify', '--deep', '--verbose=1', app],
+    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+
+  // -dvvv 的输出走 stderr，用 spawnSync 才拿得到；确认确实是 ad-hoc 签名
+  const info = spawnSync('codesign', ['-dvvv', app], { encoding: 'utf8' });
+  const text = `${info.stdout || ''}${info.stderr || ''}`;
+  if (!/adhoc/i.test(text)) {
+    throw new Error('ad-hoc 签名未生效: ' + text.trim().slice(-400));
+  }
+  return 'SIGN_OK adhoc | CodeResources present | codesign --verify passed';
 }
 
 function makeZip(appDir) {
@@ -416,6 +465,9 @@ async function main() {
 
   const removed = pruneLocales(appDir);
   console.log('[pack] pruned locales:', removed);
+  // 必须在 pruneLocales 之后：被删掉的 .pak 不能留在签名封印里。
+  // 也必须在 makeZip 之前：DMG 由同一份 zip 解出，保证两者是同一个已签名 .app。
+  if (IS_MAC) console.log('[pack]', signMacApp(appDir));
   console.log('[pack] creating zip ...');
   console.log('[pack]', makeZip(appDir));
   console.log('[pack] ZIP:', ZIP_PATH);

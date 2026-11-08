@@ -1,6 +1,6 @@
 # 浮窗提词器 · 桌面版
 
-**Windows / macOS 上真正悬浮透明的提词器：无边框、置顶、背景可全透明、鼠标可穿透，免安装、全程离线。**
+**Windows / macOS 上真正悬浮透明的提词器：无边框、置顶、背景可全透明、鼠标可穿透，免安装器（Windows 解压即用 / macOS 拖拽即用），全程离线。**
 
 ![提词悬浮窗](docs/screenshots/prompt.png)
 
@@ -76,17 +76,17 @@
 
 | 平台 | 状态 | 说明 |
 | --- | --- | --- |
-| Windows x64 | 已发布 | `v1.0.3`，Release 附件 `FloatingTeleprompter-win64.zip`，解压双击即用 |
-| macOS Apple 芯片 / Intel | 已发布 | `v1.0.3`，Release 附件 `FloatingTeleprompter-mac-arm64.dmg` / `-x64.dmg`，打开后拖进 Applications |
+| Windows x64 | 已发布 | `v1.0.4`，Release 附件 `FloatingTeleprompter-win64.zip`，解压双击即用 |
+| macOS Apple 芯片 / Intel | 已发布 | `v1.0.4`，Release 附件 `FloatingTeleprompter-mac-arm64.dmg` / `-x64.dmg`，打开后拖进 Applications；v1.0.3 的 Mac 包已被替换 |
 | Android | 规划中 | 系统有悬浮窗权限，能力上最贴合提词器；需要另写原生 / WebView 壳层 |
 | iOS / iPadOS | 最后评估 | 系统不允许第三方 App 悬浮在其他应用之上，只能用画中画近似，形态差异大 |
 
 **为什么 macOS 包不能在这台 Windows 上直接打出来**：Electron 的 `.app` 依赖
 `Contents/Frameworks` 里的符号链接和 Unix 可执行位，Windows 的压缩工具会把链接
 当普通文件、丢掉 `+x`，产出的 `.app` 打不开。因此仓库提供 GitHub Actions 工作流，
-在真正的 macOS runner 上用 `zip -y` 打包、用 `hdiutil` 生成 DMG，并分别验证
-主二进制可执行、符号链接仍在。`scripts/pack.js` 检测到「Windows 上请求 darwin」
-时会直接报错，避免产出坏包。
+在真正的 macOS runner 上用 `zip -y` 打包、做 ad-hoc 重签名、用 `hdiutil` 生成
+DMG，并分别验证主二进制可执行、符号链接仍在、以及 `codesign --verify` 通过。
+`scripts/pack.js` 检测到「Windows 上请求 darwin」时会直接报错，避免产出坏包。
 
 **macOS 版本的已知差异**（代码里已做适配）：
 
@@ -94,8 +94,16 @@
   快捷方式上，就能在启动台 / 应用程序列表 / Spotlight 里找到；这本来就是 macOS
   对非 App Store 应用的标准安装方式（Apple 官方说明），没有 `.pkg` 安装器。
   CI 同时产出一份 `.zip` 绿色版供高级用户使用。
-- 未做 Apple 签名 / 公证。首次打开需按住 Control 点按 →「打开」，或执行
-  `xattr -cr "/Applications/飓风提词器.app"`。要免除这一步需要 Apple Developer 账号。
+- **打包时会做 ad-hoc 重签名**（v1.0.4 起）。`@electron/packager` 改名并注入
+  `Resources/app` 后不会重签，产物里主二进制带着官方 `LC_CODE_SIGNATURE`、
+  却没有 `_CodeSignature/CodeResources`；下载带来的 `com.apple.quarantine` 会让
+  Gatekeeper 直接报「已损坏，需要移到废纸篓」，连右键「打开」都救不回来。
+  `codesign --force --deep --sign -` 重建有效签名后，提示降级为普通的
+  「无法验证开发者」。刻意不加 hardened runtime，否则改写 bundle 内的 JS 会让 app 启动失败。
+- 仍未做 Apple Developer 签名 / 公证：首次打开需按住 Control 点按 →「打开」，
+  **只需一次**，之后正常双击即可；不再需要用户手动执行 `xattr` / `codesign` 命令。
+  要连这一步都免掉必须有 Apple Developer 账号做签名与公证，届时还需把业务代码
+  移出 bundle 或改为整包更新，属于另一次架构改造。
 - 全局快捷键改用 `⌥⇧`（Option+Shift）前缀，避开 Spotlight 与系统快捷键冲突；
   `⌘Q` 退出，关闭主窗口只隐藏、菜单栏图标仍在。
 - 数据目录：优先 `飓风提词器.app` 同级的 `data/`；若 .app 位于 `/Applications` 等
@@ -109,8 +117,11 @@
   顶栏「检查更新」与启动 3 秒静默检查在两个平台都可用。
 - **macOS 特有前提**：更新会把新代码写入 `.app/Contents/Resources/app/`，所以 `.app`
   必须位于当前用户可写的位置（「应用程序」或解压文件夹），**不能从只读 `.dmg` 里运行**。
-  安装前会做写权限预检，不可写时直接给出处置提示、不会白下载补丁。本版本未签名；
-  若自行用 `codesign` 签过名，修改 bundle 内文件会使签名失效，这种情况请用完整包覆盖。
+  安装前会做写权限预检，不可写时直接给出处置提示、不会白下载补丁。
+  **签名自愈**：改写 bundle 内的 JS 会让 ad-hoc 签名的封印失效，`updater.js` 在写完
+  补丁后会自动 `xattr -cr` 清除自身 `.app` 的隔离属性、并 best-effort 重签
+  （普通用户未必装了 Xcode 命令行工具，因此重签失败只记录、不判更新失败）。
+  路径由 `macBundleRoot()` 从代码目录推导并校验，只作用于本应用自己的 `.app`。
 - Mac 上「重启生效」同样走 Electron `app.relaunch()`。菜单栏 Template 图、Finder 图标
   （`.app/Contents/Resources/icon.icns`）、`Info.plist` 与 `使用说明.txt` 属于完整包内容。
 
@@ -151,7 +162,7 @@
 > 从 v1.0.2 开始，后续所有版本都能在软件内一键更新。
 > 若哪次改动涉及 Electron 运行时或语音模型，更新窗口会提示改下完整包。
 
-### macOS：DMG 拖拽安装（v1.0.3 起）
+### macOS：DMG 拖拽安装（v1.0.3 起，v1.0.4 修复首次打开）
 
 到 [Releases](https://github.com/neoshua/floating-teleprompter/releases) 按芯片下载
 `FloatingTeleprompter-mac-arm64.dmg`（Apple 芯片 M 系列）或
@@ -161,15 +172,18 @@
    （也就是拖进「应用程序」文件夹）。这就是 macOS 对非 App Store 应用的标准安装方式，
    不需要管理员密码，也没有 `.pkg` 安装器。
 2. 拖完即可在启动台 / 应用程序列表 / Spotlight 中找到并打开，也可拖到程序坞固定。
-3. 本版本**未做 Apple 签名 / 公证**，首次打开会被 Gatekeeper 拦下：在 Finder 里
-   按住 Control 点按 `.app` →「打开」→ 再点「打开」，或执行
-   `xattr -cr "/Applications/飓风提词器.app"`，处理一次之后就能正常双击启动。
+3. 本版本**未做 Apple Developer 签名 / 公证**（但已做本机 ad-hoc 签名），首次打开
+   会提示「无法验证开发者」：在 Finder 里按住 Control 点按 `.app` →「打开」→
+   再点「打开」，**只需一次**，之后就能正常双击启动。不需要执行任何终端命令。
 4. 首次使用「语音跟读」时允许麦克风权限；音频只在本机离线识别，不上传、不保存。
 
 > ⚠️ **务必先把 `.app` 拖出来再用**。DMG 挂载出来的磁盘映像是只读的，若直接在里面
 > 双击运行，以后点应用内「下载并安装」时新代码写不进 `.app`；安装前的写权限预检
-> 会给出提示并中止，不会白下载，也不会弄坏程序。本版本未签名，若自行用 `codesign`
-> 签过名，增量更新会使签名失效，这种情况请改用完整包覆盖安装。
+> 会给出提示并中止，不会白下载，也不会弄坏程序。
+>
+> 从 **v1.0.3 升级**：手动执行过 `xattr -cr` 已能打开的，直接在应用内更新即可；
+> 仍提示「已损坏」的，请重新下载 v1.0.4 的 DMG 覆盖安装 —— 代码补丁无法修复
+> 一个已经破损的程序包。
 
 不想要拖拽安装时，GitHub Actions 的 Artifact 里也保留 `.zip` 绿色版（不随 Release
 分发），用 macOS 自带的「归档实用工具」解压即可；不要用会丢掉符号链接与可执行位的
@@ -204,12 +218,13 @@ npm start            # 启动开发版
 ```bash
 npm run pack                    # 生成 dist/飓风提词器-桌面版-win64.zip
 node scripts/make-patch.js      # 生成 dist/patch-vX.Y.Z.zip 与 dist/latest.json
-node scripts/test-update.js     # 更新链路端到端回归测试（10 项）
+node scripts/test-update.js     # 更新链路端到端回归测试（14 项）
 ```
 
 **macOS 包（含 DMG）必须在 macOS 上构建**（原因见「平台支持」）。仓库已配置
 GitHub Actions：`Actions → Build macOS → Run workflow` 会为每个架构产出 `.dmg`
-与 `.zip` 两个 Artifact，并在挂载 DMG 后自检快捷方式、符号链接、可执行位与代码文件。
+与 `.zip` 两个 Artifact，并在生成 zip 前做 ad-hoc 重签名、在解压与挂载 DMG 后
+分别自检 `CodeResources`、`codesign --verify`、快捷方式、符号链接、可执行位与代码文件。
 Mac 本机可：
 
 ```bash
@@ -320,6 +335,25 @@ docs/screenshots/        界面预览图
 > 在那之前，给仓库点个 ⭐ Star、提个 Issue 或 PR，就是很实在的支持。
 
 ## 更新日志
+
+**v1.0.4**（2026-11-08）—— 修复 macOS「已损坏，需要移到废纸篓」
+
+- 真机反馈：v1.0.3 的 DMG 拖进 Applications 后打不开；执行 `xattr -cr` 清掉隔离
+  属性后即正常，说明 `.app` 本身完整，问题出在「下载隔离属性 + 无效签名」的组合。
+- 根因：`@electron/packager` 改名并注入 `Resources/app`、重写 `Info.plist` 后未重签，
+  主二进制与 Electron Framework 仍带官方 `LC_CODE_SIGNATURE`，但整个包里没有
+  `Contents/_CodeSignature/CodeResources` —— 签名状态自相矛盾。
+- 修复：`pack.js` 在 `pruneLocales` 之后、生成 zip 之前执行
+  `codesign --force --deep --sign -`（ad-hoc、刻意不带 hardened runtime），并校验
+  `CodeResources` 存在与 `codesign --verify` 通过；CI 解压后、`make-dmg.sh` 挂载后
+  各再验一次，确保签名能穿过「zip → 解压 → DMG → 只读挂载」整条链路。提示降级为
+  普通的「无法验证开发者」，首次按 Control 点按 →「打开」放行一次即可。
+- `updater.js` 新增 `macBundleRoot()` / `finalizeMacBundle()`：macOS 装完补丁后自动
+  清除自身 `.app` 的隔离属性并 best-effort 重签，避免改写 `Resources/app/*.js`
+  导致签名失效后再次报「已损坏」。路径严格校验，失败只记录、不回滚已成功的更新。
+- 回归测试新增 2 项（结构校验、xattr 优先 + 缺 codesign 时降级），共 14 项。
+- 随包说明、README、更新弹窗文案同步：不再引导用户手动执行终端命令；
+  v1.0.3 用户若仍打不开，需重新下载 DMG 覆盖安装。
 
 **v1.0.3**（2026-11-08）—— macOS 正式发布与 DMG 拖拽安装
 

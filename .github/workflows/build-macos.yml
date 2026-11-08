@@ -104,7 +104,12 @@ jobs:
           grep -q 'NSMicrophoneUsageDescription' "$APP/Contents/Info.plist" || { echo "ASSERT_FAIL Info.plist 缺麦克风用途说明"; exit 1; }
           LINKS="$(find "$APP/Contents/Frameworks" -type l | wc -l | tr -d ' ')"
           test "$LINKS" -gt 0 || { echo "ASSERT_FAIL Frameworks 符号链接丢失 ($LINKS)"; exit 1; }
-          echo "APP_OK | icon=$ICNS | symlinks=$LINKS"
+          # v1.0.3 的「已损坏，移到废纸篓」就是缺这一步：zip 里的 .app 必须
+          # 带一份有效的 ad-hoc 签名和完整的 CodeResources 封印资源。
+          test -f "$APP/Contents/_CodeSignature/CodeResources" || { echo "ASSERT_FAIL 缺签名封印资源"; exit 1; }
+          codesign --verify --deep --verbose=1 "$APP" 2>&1 || { echo "ASSERT_FAIL 解压后签名无效"; exit 1; }
+          codesign -dvvv "$APP" 2>&1 | grep -qi 'Signature=adhoc' || { echo "ASSERT_FAIL 不是 ad-hoc 签名"; exit 1; }
+          echo "APP_OK | icon=$ICNS | symlinks=$LINKS | adhoc_signature=valid"
           shasum -a 256 "$ZIP"
 
       - name: Build drag-to-Applications DMG and verify

@@ -11,7 +11,7 @@ const os = require('os');
 const path = require('path');
 const {
   sha256, readZip, verifyPatch, writeFiles, compareVersions, isSafeRel,
-  selectFull, ensureWritableAppRoot
+  selectFull, ensureWritableAppRoot, macBundleRoot, finalizeMacBundle
 } = require('../updater');
 const { makeZip } = require('./make-patch');
 
@@ -237,6 +237,47 @@ try {
     assert(msg.includes('应用程序'), '缺少 macOS 的处置指引');
     assert(msg.includes('.dmg'), '未提示只读磁盘映像场景');
     return '下载前即拦截，提示拖入「应用程序」并避开 .dmg';
+  });
+
+  check('macOS 签名自愈：只认本应用的标准 .app 结构', () => {
+    const base = path.join(tmp, 'BundleTest.app');
+    const contents = path.join(base, 'Contents');
+    const code = path.join(contents, 'Resources', 'app');
+    fs.mkdirSync(code, { recursive: true });
+    fs.mkdirSync(path.join(contents, 'MacOS'), { recursive: true });
+    fs.writeFileSync(path.join(contents, 'Info.plist'), '<plist/>');
+    assert(macBundleRoot(code) === path.resolve(base), '未推导出 .app 根');
+    assert(macBundleRoot(tmp) === null, '普通目录不应被当成 .app');
+    assert(macBundleRoot(path.join(code, 'src')) === null, '子目录不应被当成代码根');
+    fs.rmSync(path.join(contents, 'Info.plist'));
+    assert(macBundleRoot(code) === null, '缺 Info.plist 时应拒绝');
+    return '路径推导 + 结构校验，拒绝作用于任意目录';
+  });
+
+  check('macOS 签名自愈：清隔离属性优先、重签兜底、缺工具不抛错', () => {
+    const base = path.join(tmp, 'SignTest.app');
+    const contents = path.join(base, 'Contents');
+    const code = path.join(contents, 'Resources', 'app');
+    fs.mkdirSync(code, { recursive: true });
+    fs.mkdirSync(path.join(contents, 'MacOS'), { recursive: true });
+    fs.writeFileSync(path.join(contents, 'Info.plist'), '<plist/>');
+    const calls = [];
+    const runner = (cmd, args) => { calls.push([cmd, args]); };
+    const r = finalizeMacBundle(code, { platform: 'darwin', run: runner });
+    assert(r.attempted && r.quarantineCleared && r.resigned, '两步未都执行');
+    assert(calls[0][0] === 'xattr' && calls[0][1][0] === '-cr', '第一步应清隔离属性');
+    assert(calls[0][1][1] === path.resolve(base), '作用域必须是本应用 .app');
+    assert(calls[1][0] === 'codesign' && calls[1][1].includes(path.resolve(base)), '第二步应重签 .app');
+    assert(finalizeMacBundle(code, { platform: 'win32', run: runner }).attempted === false,
+      'Windows 上不应执行');
+    // 普通用户 Mac 上可能没装 Xcode CLT：codesign 不存在时静默降级
+    const r2 = finalizeMacBundle(code, {
+      platform: 'darwin',
+      run: (cmd) => { if (cmd === 'codesign') throw new Error('ENOENT'); }
+    });
+    assert(r2.quarantineCleared && !r2.resigned && r2.notes.length === 1,
+      '缺 codesign 时应降级而不是让更新失败');
+    return 'xattr 为主 + codesign 兜底，缺 CLT 时静默降级';
   });
 } finally {
   fs.rmSync(tmp, { recursive: true, force: true });
