@@ -233,7 +233,7 @@ function pruneLocales(appDir) {
   return removed;
 }
 
-function makeZip() {
+function makeZip(appDir) {
   fs.mkdirSync(DIST, { recursive: true });
   if (!IS_MAC) {
     // Windows：用 Python zipfile 生成，顺手跳过 data/ 内容与测试残留
@@ -400,7 +400,7 @@ async function main() {
   const removed = pruneLocales(appDir);
   console.log('[pack] pruned locales:', removed);
   console.log('[pack] creating zip ...');
-  console.log('[pack]', makeZip());
+  console.log('[pack]', makeZip(appDir));
   console.log('[pack] ZIP:', ZIP_PATH);
 }
 

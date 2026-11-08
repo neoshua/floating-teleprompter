@@ -88,9 +88,13 @@ jobs:
           test -n "$APP"
           test -x "$APP/Contents/MacOS/飓风提词器"
           test -f "$APP/Contents/Resources/app/main.js"
+          test -f "$APP/Contents/Resources/app/updater.js"
+          test -f "$APP/Contents/Resources/app/assets/trayTemplate.png"
+          test -f "$APP/Contents/Resources/icon.icns"
           grep -q 'NSMicrophoneUsageDescription' "$APP/Contents/Info.plist"
           LINKS="$(find "$APP/Contents/Frameworks" -type l | wc -l | tr -d ' ')"
-          echo "APP_OK $APP | symlinks=$LINKS"
+          test "$LINKS" -gt 0
+          echo "APP_OK $APP | symlinks=$LINKS | icon.icns OK"
           shasum -a 256 "$ZIP"
 
       - uses: actions/upload-artifact@v4
