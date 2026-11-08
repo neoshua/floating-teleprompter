@@ -349,9 +349,11 @@ async function main() {
       appPaths = await packager(packOpts);
     } catch (e) {
       const msg = String((e && e.message) || e);
-      if (!/EPERM|EEXIST|ENOTEMPTY|EBUSY|rename/i.test(msg)) throw e;
+      if (!/EPERM|EEXIST|ENOTEMPTY|EBUSY|rename|SAFE_DELETE|CONFIRM_REQUIRED/i.test(msg)) throw e;
       // Windows 上 Defender / 资源管理器偶尔会短暂锁住上一次的输出目录，
-      // 使 packager 重命名模板目录时报 EPERM。换一个全新子目录重试即可。
+      // 使 packager 重命名模板目录时报 EPERM；某些受管环境还会对「批量删除
+      // 旧输出目录」要求确认（SAFE_DELETE_BULK_CONFIRM_REQUIRED）。
+      // 两者都靠换一个全新子目录重试绕开，不去动旧目录。
       const fallback = path.join(OUT, 'build-' + Date.now());
       fs.mkdirSync(fallback, { recursive: true });
       console.log('[pack] output dir busy, retrying in', fallback);
