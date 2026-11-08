@@ -97,11 +97,22 @@
   不可写位置，自动回退到 `~/Library/Application Support/飓风提词器/data/`。
 - 菜单栏使用 Template 图标（随系统明暗自动着色）；`Info.plist` 带麦克风用途说明，
   否则 macOS 10.14+ 在申请录音权限时会直接终止应用。
-- 应用内更新仍可用：`latest.json` 的 `fullByPlatform` 按「平台-架构」给完整包，
-  增量补丁只含代码，Windows / macOS 共用同一个。
+- **应用内更新与 Windows 完全一致**：`updater.js` 是平台无关的主进程模块，两个平台
+  共用同一套检查、增量补丁下载与 SHA-256 校验、安装前备份、失败回滚、重启生效逻辑；
+  补丁也是同一个（业务代码都是纯 JS）。`latest.json` 的 `fullByPlatform` 按
+  「平台-架构」提供完整包，Mac 用户不会被推 Windows 安装包。托盘菜单、帮助菜单、
+  顶栏「检查更新」与启动 3 秒静默检查在两个平台都可用。
+- **macOS 特有前提**：更新会把新代码写入 `.app/Contents/Resources/app/`，所以 `.app`
+  必须位于当前用户可写的位置（「应用程序」或解压文件夹），**不能从只读 `.dmg` 里运行**。
+  安装前会做写权限预检，不可写时直接给出处置提示、不会白下载补丁。本版本未签名；
+  若自行用 `codesign` 签过名，修改 bundle 内文件会使签名失效，这种情况请用完整包覆盖。
+- Mac 上「重启生效」同样走 Electron `app.relaunch()`。菜单栏 Template 图、Finder 图标
+  （`.app/Contents/Resources/icon.icns`）、`Info.plist` 与 `使用说明.txt` 属于完整包内容。
 
-> 发版约定：增量补丁只包含代码文件，不含 `data/` 与 `assets/` 里的模型。
-> 若以后更换图标等 `assets/` 资源，必须重新出完整包，不能只发补丁。
+> 发版约定：增量补丁只含代码文件（`main.js`、`updater.js`、`src/*`、`vendor/*` 等），
+> 不含 `data/`、`assets/` 里的模型与图标，也不含 `.app/Contents/Info.plist`。
+> 因此更换图标、修改麦克风权限用途说明、升级 Electron 运行时，都必须重新出完整包，
+> 不能只发补丁。
 
 ## 快速开始
 

@@ -10,7 +10,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const {
-  sha256, readZip, verifyPatch, writeFiles, compareVersions, isSafeRel, selectFull
+  sha256, readZip, verifyPatch, writeFiles, compareVersions, isSafeRel,
+  selectFull, ensureWritableAppRoot
 } = require('../updater');
 const { makeZip } = require('./make-patch');
 
@@ -80,7 +81,10 @@ try {
       assert(sha256(files.get(rel)) === meta.sha256, '文件校验不符：' + rel);
       const disk = path.join(ROOT, rel);
       assert(fs.existsSync(disk), '源码不存在：' + rel);
-      assert(sha256(fs.readFileSync(disk)) === meta.sha256, '补丁内容与源码不一致：' + rel);
+      assert(
+        sha256(fs.readFileSync(disk)) === meta.sha256,
+        `补丁内容与源码不一致：${rel}（源码已改动但尚未重新出补丁 → 先跑 node scripts/make-patch.js）`
+      );
     }
     return `${n} 个代码文件，全部与源码逐字节一致`;
   });
@@ -211,6 +215,28 @@ try {
       set('platform', origPlatform); set('arch', origArch);
     }
     return '三种平台各自命中；旧清单不会给 Mac 推 Windows 包';
+  });
+
+  check('安装前写权限预检：可写目录通过且不留探针', () => {
+    const dir = path.join(tmp, 'writable-app');
+    fs.mkdirSync(dir, { recursive: true });
+    assert(ensureWritableAppRoot(dir, 'darwin') === true, '可写目录未通过');
+    assert(!fs.existsSync(path.join(dir, '.upd-write-probe')), '探针文件未清理');
+    return '探针创建即删除，业务文件零改动';
+  });
+
+  check('安装前写权限预检：只读/异常目录给出 macOS 可操作提示', () => {
+    const dir = path.join(tmp, 'readonly-app');
+    fs.mkdirSync(dir, { recursive: true });
+    // 让探针路径变成目录，跨平台稳定触发写入失败（等价于无写权限）
+    fs.mkdirSync(path.join(dir, '.upd-write-probe'));
+    const msg = expectThrow(
+      () => ensureWritableAppRoot(dir, 'darwin'),
+      '程序目录不可写'
+    );
+    assert(msg.includes('应用程序'), '缺少 macOS 的处置指引');
+    assert(msg.includes('.dmg'), '未提示只读磁盘映像场景');
+    return '下载前即拦截，提示拖入「应用程序」并避开 .dmg';
   });
 } finally {
   fs.rmSync(tmp, { recursive: true, force: true });

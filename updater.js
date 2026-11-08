@@ -346,6 +346,27 @@ function writeFiles(targetRoot, pending, opts = {}) {
   return { record, changed, added, backupDir };
 }
 
+/**
+ * 安装前预检：确认代码目录真的可写，避免白下载几 MB 之后才失败。
+ * Windows 绿色版一般没问题；macOS 的 .app 若还留在只读磁盘映像里、或放在
+ * 当前用户无写权限的位置，备份阶段才会抛 EROFS，用户看不懂该怎么处理。
+ * 探针只创建一个隐藏小文件并立即删除，不会改动任何业务数据。
+ */
+function ensureWritableAppRoot(appRoot, platform = process.platform) {
+  const probe = path.join(appRoot, '.upd-write-probe');
+  try {
+    fs.mkdirSync(appRoot, { recursive: true });
+    fs.writeFileSync(probe, 'ok');
+    fs.unlinkSync(probe);
+    return true;
+  } catch (e) {
+    const hint = platform === 'darwin'
+      ? '请把「飓风提词器.app」拖进「应用程序」或解压到可写文件夹后重试；不要从只读的磁盘映像（.dmg）里直接运行。'
+      : '请检查程序目录的写入权限，或把整个文件夹移到当前用户可写的位置后重试。';
+    throw new Error(`程序目录不可写，无法应用更新（${e.code || e.message}）。${hint}`);
+  }
+}
+
 /* ------------------------------------------------------------- 配置读写 */
 function createUpdater(cfg) {
   const { appRoot, dataDir, version, packaged, emit, restart } = cfg;
@@ -429,6 +450,8 @@ function createUpdater(cfg) {
     if (installing) throw new Error('已有更新正在进行中');
     installing = true;
     try {
+      // 先确认能写入代码目录，再联网下载；macOS 只读挂载时给出可操作的提示
+      ensureWritableAppRoot(appRoot);
       const state = info && info.state === 'available' ? info : await check(true);
       if (state.state === 'error') throw new Error(state.error || '版本检查失败');
       if (state.state !== 'available') return { ok: false, reason: '已是最新版本' };
@@ -538,5 +561,5 @@ function createUpdater(cfg) {
 
 module.exports = {
   createUpdater, compareVersions, isSafeRel, readZip, sha256,
-  verifyPatch, writeFiles, selectFull, fullKey
+  verifyPatch, writeFiles, selectFull, fullKey, ensureWritableAppRoot
 };
