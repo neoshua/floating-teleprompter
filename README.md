@@ -1,6 +1,6 @@
 # 浮窗提词器 · 桌面版
 
-**Windows 上真正悬浮透明的提词器：无边框、置顶、背景可全透明、鼠标可穿透，解压双击即用，全程离线。**
+**Windows / macOS 上真正悬浮透明的提词器：无边框、置顶、背景可全透明、鼠标可穿透，免安装、全程离线。**
 
 ![提词悬浮窗](docs/screenshots/prompt.png)
 
@@ -76,19 +76,24 @@
 
 | 平台 | 状态 | 说明 |
 | --- | --- | --- |
-| Windows x64 | 已发布 | `v1.0.2`，Release 附件 `FloatingTeleprompter-win64.zip` |
-| macOS Apple 芯片 / Intel | 已构建，待发布 | arm64 / x64 两个 zip 已由 `.github/workflows/build-macos.yml` 生成并通过结构校验，暂未上传 Release |
+| Windows x64 | 已发布 | `v1.0.3`，Release 附件 `FloatingTeleprompter-win64.zip`，解压双击即用 |
+| macOS Apple 芯片 / Intel | 已发布 | `v1.0.3`，Release 附件 `FloatingTeleprompter-mac-arm64.dmg` / `-x64.dmg`，打开后拖进 Applications |
 | Android | 规划中 | 系统有悬浮窗权限，能力上最贴合提词器；需要另写原生 / WebView 壳层 |
 | iOS / iPadOS | 最后评估 | 系统不允许第三方 App 悬浮在其他应用之上，只能用画中画近似，形态差异大 |
 
 **为什么 macOS 包不能在这台 Windows 上直接打出来**：Electron 的 `.app` 依赖
 `Contents/Frameworks` 里的符号链接和 Unix 可执行位，Windows 的压缩工具会把链接
 当普通文件、丢掉 `+x`，产出的 `.app` 打不开。因此仓库提供 GitHub Actions 工作流，
-在真正的 macOS runner 上用 `zip -y` 打包，并验证主二进制可执行、符号链接仍在。
-`scripts/pack.js` 检测到「Windows 上请求 darwin」时会直接报错，避免产出坏包。
+在真正的 macOS runner 上用 `zip -y` 打包、用 `hdiutil` 生成 DMG，并分别验证
+主二进制可执行、符号链接仍在。`scripts/pack.js` 检测到「Windows 上请求 darwin」
+时会直接报错，避免产出坏包。
 
 **macOS 版本的已知差异**（代码里已做适配）：
 
+- 分发形态是 DMG 拖拽安装：打开 DMG，把 `.app` 拖到窗口里的 `Applications`
+  快捷方式上，就能在启动台 / 应用程序列表 / Spotlight 里找到；这本来就是 macOS
+  对非 App Store 应用的标准安装方式（Apple 官方说明），没有 `.pkg` 安装器。
+  CI 同时产出一份 `.zip` 绿色版供高级用户使用。
 - 未做 Apple 签名 / 公证。首次打开需按住 Control 点按 →「打开」，或执行
   `xattr -cr "/Applications/飓风提词器.app"`。要免除这一步需要 Apple Developer 账号。
 - 全局快捷键改用 `⌥⇧`（Option+Shift）前缀，避开 Spotlight 与系统快捷键冲突；
@@ -146,6 +151,30 @@
 > 从 v1.0.2 开始，后续所有版本都能在软件内一键更新。
 > 若哪次改动涉及 Electron 运行时或语音模型，更新窗口会提示改下完整包。
 
+### macOS：DMG 拖拽安装（v1.0.3 起）
+
+到 [Releases](https://github.com/neoshua/floating-teleprompter/releases) 按芯片下载
+`FloatingTeleprompter-mac-arm64.dmg`（Apple 芯片 M 系列）或
+`FloatingTeleprompter-mac-x64.dmg`（Intel）：
+
+1. 双击 DMG 打开，把「飓风提词器.app」拖到窗口里的 **Applications** 快捷方式上
+   （也就是拖进「应用程序」文件夹）。这就是 macOS 对非 App Store 应用的标准安装方式，
+   不需要管理员密码，也没有 `.pkg` 安装器。
+2. 拖完即可在启动台 / 应用程序列表 / Spotlight 中找到并打开，也可拖到程序坞固定。
+3. 本版本**未做 Apple 签名 / 公证**，首次打开会被 Gatekeeper 拦下：在 Finder 里
+   按住 Control 点按 `.app` →「打开」→ 再点「打开」，或执行
+   `xattr -cr "/Applications/飓风提词器.app"`，处理一次之后就能正常双击启动。
+4. 首次使用「语音跟读」时允许麦克风权限；音频只在本机离线识别，不上传、不保存。
+
+> ⚠️ **务必先把 `.app` 拖出来再用**。DMG 挂载出来的磁盘映像是只读的，若直接在里面
+> 双击运行，以后点应用内「下载并安装」时新代码写不进 `.app`；安装前的写权限预检
+> 会给出提示并中止，不会白下载，也不会弄坏程序。本版本未签名，若自行用 `codesign`
+> 签过名，增量更新会使签名失效，这种情况请改用完整包覆盖安装。
+
+不想要拖拽安装时，GitHub Actions 的 Artifact 里也保留 `.zip` 绿色版（不随 Release
+分发），用 macOS 自带的「归档实用工具」解压即可；不要用会丢掉符号链接与可执行位的
+第三方解压工具重压，否则 `.app` 打不开。
+
 ### 方式二：从源码运行
 
 需要 Node.js ≥ 18 与 npm。
@@ -178,23 +207,31 @@ node scripts/make-patch.js      # 生成 dist/patch-vX.Y.Z.zip 与 dist/latest.j
 node scripts/test-update.js     # 更新链路端到端回归测试（10 项）
 ```
 
-**macOS 包必须在 macOS 上构建**（原因见「平台支持」）。仓库已配置 GitHub Actions：
-发布 Release 时自动构建 arm64 / x64 两个 zip 并挂到该 Release；也可手动
-`Actions → Build macOS → Run workflow` 只产出 Artifact。Mac 本机可：
+**macOS 包（含 DMG）必须在 macOS 上构建**（原因见「平台支持」）。仓库已配置
+GitHub Actions：`Actions → Build macOS → Run workflow` 会为每个架构产出 `.dmg`
+与 `.zip` 两个 Artifact，并在挂载 DMG 后自检快捷方式、符号链接、可执行位与代码文件。
+Mac 本机可：
 
 ```bash
 npm install && npm run setup
 npm run pack:mac                # Apple 芯片 → dist/FloatingTeleprompter-mac-arm64.zip
-npm run pack:mac-intel          # Intel     → dist/FloatingTeleprompter-mac-x64.zip
+bash scripts/make-dmg.sh arm64  #            → dist/FloatingTeleprompter-mac-arm64.dmg
+npm run pack:mac-intel          # Intel      → dist/FloatingTeleprompter-mac-x64.zip
+bash scripts/make-dmg.sh x64    #            → dist/FloatingTeleprompter-mac-x64.dmg
 ```
 
 构建产物中会自动附带 `LICENSE`、`NOTICE.md`、`THIRD_PARTY_NOTICES.md`、
 `third_party/` 与 `使用说明.txt`，请一并分发、不要删除。
 
-维护者发版时，把 `patch-vX.Y.Z.zip`、`latest.json`、各平台完整包一起上传到对应 Release。
+**发版顺序有硬性要求**：`latest.json` 里写死了 DMG 的 SHA-256。必须先跑完 CI、
+把 Artifact 下载到 `dist/`，再运行 `node scripts/make-patch.js --min-version <上一版>`
+生成补丁与清单，最后把 `.dmg`、`patch-vX.Y.Z.zip`、`latest.json` 与 Windows 完整包
+**一次性**上传到同一个 Release。CI 不会在 Release 发布后重新构建并覆盖附件——
+两次构建出的 DMG 不是同一份，覆盖会让哈希校验失效。
+
 `latest.json` 是应用读取的版本清单，里面含补丁的 URL、大小与 SHA-256，
-并用 `fullByPlatform` 按「平台-架构」登记完整包；补丁是**全量代码快照**
-（不含运行时与模型），所以停在任意旧版本的用户都能一步升到最新。
+并用 `fullByPlatform` 按「平台-架构」登记完整包（macOS 指向 DMG）；补丁是
+**全量代码快照**（不含运行时与模型），所以停在任意旧版本的用户都能一步升到最新。
 
 ## 使用要点
 
@@ -284,7 +321,7 @@ docs/screenshots/        界面预览图
 
 ## 更新日志
 
-**进行中（未发布）** —— macOS 支持
+**v1.0.3**（2026-11-08）—— macOS 正式发布与 DMG 拖拽安装
 
 - 主进程适配 macOS：系统应用菜单（否则会显示「Electron」且 `⌘Q` 无效）、
   Template 菜单栏图标、`⌥⇧` 全局快捷键、`.app` 同级数据目录与不可写回退、
@@ -292,10 +329,14 @@ docs/screenshots/        界面预览图
 - `Info.plist` 补 `NSMicrophoneUsageDescription`，避免语音跟读申请权限时被系统终止。
 - 新增 `scripts/make-mac-assets.js` 生成 `.icns` 与菜单栏图标；`pack.js` 支持
   `--platform/--arch`、macOS 专属构建参数与 `zip -y`（保留符号链接和可执行位）。
-- 新增 `.github/workflows/build-macos.yml`，在 macOS runner 上构建并校验产物；
-  `latest.json` 增加 `fullByPlatform`，更新弹窗不会再给 Mac 用户推 Windows 安装包。
-- 本机验证：Windows 源码模式 `--selftest` `ok:true`；更新链路回归 10/10 通过。
-  **macOS 产物需由 CI 在真机构建，尚未发布。**
+- 新增 `.github/workflows/build-macos.yml`，在 macOS runner 上构建并挂载校验；
+  `latest.json` 增加 `fullByPlatform`（macOS 指向 DMG），不会再给 Mac 用户推 Windows 包。
+- 新增 `scripts/make-dmg.sh`：从已校验的 zip 生成带 Applications 快捷方式的 DMG，
+  重新挂载自检符号链接、可执行位与代码文件。CI 改为只产 Artifact、不再于 Release
+  发布后覆盖附件，保证 `latest.json` 的 SHA-256 与线上文件是同一份。
+- 随包说明改为「先拖进 Applications 再用」，明确 DMG 只读、不能在挂载盘内直接运行。
+- 验证：更新链路回归 12/12 通过；Windows 完整包重打自检通过；
+  arm64 / x64 DMG 均由 macOS runner 挂载校验。
 
 **v1.0.2**（2026-11-07）—— 应用内增量更新
 

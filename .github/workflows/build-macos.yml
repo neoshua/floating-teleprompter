@@ -2,8 +2,14 @@ name: Build macOS
 
 # macOS 包必须在 macOS 上构建：Electron 的 .app 依赖符号链接和 Unix 可执行位，
 # 在 Windows 上交叉打包会得到一个打不开的 .app。
-#   · 手动触发：Actions → Build macOS → Run workflow（产物在 Artifacts）
-#   · 发布 Release 时：自动构建 arm64 + x64 并把两个 zip 挂到该 Release
+#   · 手动触发：Actions → Build macOS → Run workflow
+#   · 每个架构的 Artifact 同时包含 .dmg（推荐，拖拽安装）和 .zip（绿色版备选）
+#
+# 【为什么发布 Release 时不再自动挂附件】
+# latest.json 里写死了 DMG 的 SHA-256。若 Release 发布后 CI 再构建一次并
+# --clobber 覆盖，两次产出的 DMG 不是同一份，客户端校验就会失败。
+# 因此统一流程是：维护者先跑本工作流 → 下载 Artifact → 本地生成 latest.json
+# → 把 DMG / zip / 补丁 / latest.json 一次性上传到 Release。
 on:
   workflow_dispatch:
     inputs:
@@ -16,11 +22,9 @@ on:
           - both
           - arm64
           - x64
-  release:
-    types: [published]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   matrix:
@@ -103,15 +107,13 @@ jobs:
           echo "APP_OK | icon=$ICNS | symlinks=$LINKS"
           shasum -a 256 "$ZIP"
 
+      - name: Build drag-to-Applications DMG and verify
+        run: bash scripts/make-dmg.sh ${{ matrix.arch }}
+
       - uses: actions/upload-artifact@v4
         with:
           name: mac-${{ matrix.arch }}
-          path: dist/FloatingTeleprompter-mac-${{ matrix.arch }}.zip
+          path: |
+            dist/FloatingTeleprompter-mac-${{ matrix.arch }}.dmg
+            dist/FloatingTeleprompter-mac-${{ matrix.arch }}.zip
           if-no-files-found: error
-
-      - name: Attach zip to published release
-        if: github.event_name == 'release'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.event.release.tag_name }}
-        run: gh release upload "$TAG" "dist/FloatingTeleprompter-mac-${{ matrix.arch }}.zip" --clobber

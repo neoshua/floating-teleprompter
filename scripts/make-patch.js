@@ -31,10 +31,14 @@ const NOTES_FILE = arg('--notes-file', null);
 const MIN_VERSION = arg('--min-version', VERSION);
 
 const DEFAULT_NOTES = `${TAG}
-· 新增应用内更新：顶栏 / 状态栏可检查新版本，发现更新后一键下载增量补丁，重启即生效。
-· 增量补丁只包含程序代码（约 1~2 MB），不必再重复下载 150MB 完整安装包。
-· 更新前自动备份旧文件到 data/backups/，校验失败会自动回滚；稿件与设置原样保留。
-· 检查更新只读取 GitHub 上的公开版本清单，不上传任何本机数据，可在更新窗口关闭。`;
+· macOS 版正式发布：Apple 芯片 / Intel 各一个 DMG，打开后把 .app 拖进 Applications 即可，
+  能正常出现在启动台 / 应用程序列表；不再需要自己找文件夹里的 .app。
+· Mac 与 Windows 共用同一套应用内增量更新：检查、SHA-256 校验、备份、失败回滚、
+  重启生效，完整包也按「平台-架构」分发，Mac 用户不会被推 Windows 安装包。
+· DMG 挂载出来的磁盘映像是只读的，请先把 .app 拖到「应用程序」再运行；直接在
+  挂载盘里运行会让以后的应用内更新因无法写入而中止（预检会提示，不会损坏程序）。
+· 本版本未做 Apple 签名 / 公证，首次打开需按 Control 点按 →「打开」。
+· Windows 端仅同步版本号与完整包登记，功能无变化；稿件、设置、语音模型均不受更新影响。`;
 
 /* ------------------------------------------------------------------ CRC32 */
 const CRC_TABLE = (() => {
@@ -167,12 +171,16 @@ function main() {
   // full 保留为 Windows 包，兼容只认这个字段的 v1.0.2 客户端。
   const fullByPlatform = {};
   if (full) fullByPlatform['win32-x64'] = full;
-  for (const [key, name] of Object.entries({
-    'darwin-arm64': 'FloatingTeleprompter-mac-arm64.zip',
-    'darwin-x64': 'FloatingTeleprompter-mac-x64.zip'
-  })) {
+  // macOS 主推 DMG；若这次只出了 zip（旧流程 / CI Artifact），仍登记为完整包，
+  // 不让 Mac 用户在「下载完整安装包」时拿不到东西。
+  const MAC_ASSETS = {
+    'darwin-arm64': ['FloatingTeleprompter-mac-arm64.dmg', 'FloatingTeleprompter-mac-arm64.zip'],
+    'darwin-x64': ['FloatingTeleprompter-mac-x64.dmg', 'FloatingTeleprompter-mac-x64.zip']
+  };
+  for (const [key, names] of Object.entries(MAC_ASSETS)) {
+    const name = names.find(n => fs.existsSync(path.join(DIST, n)));
+    if (!name) continue;
     const p = path.join(DIST, name);
-    if (!fs.existsSync(p)) continue;
     fullByPlatform[key] = {
       name, url: base + name,
       size: fs.statSync(p).size,

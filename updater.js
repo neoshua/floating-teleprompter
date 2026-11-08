@@ -124,10 +124,12 @@ async function fetchJson(url, version) {
 
 /* 完整包按「平台-架构」分发；补丁只含代码，所有平台共用同一个。
    latest.json 里的 full 是历史字段（Windows 包），保留以兼容 v1.0.2 客户端。 */
+// macOS 从 v1.0.3 起主推 DMG；zip 作为绿色版保留在 CI Artifact，
+// 老 Release 里若只有 zip，兜底时也能选中。
 const FULL_ASSET_NAMES = {
-  'win32-x64': 'FloatingTeleprompter-win64.zip',
-  'darwin-arm64': 'FloatingTeleprompter-mac-arm64.zip',
-  'darwin-x64': 'FloatingTeleprompter-mac-x64.zip'
+  'win32-x64': ['FloatingTeleprompter-win64.zip'],
+  'darwin-arm64': ['FloatingTeleprompter-mac-arm64.dmg', 'FloatingTeleprompter-mac-arm64.zip'],
+  'darwin-x64': ['FloatingTeleprompter-mac-x64.dmg', 'FloatingTeleprompter-mac-x64.zip']
 };
 function fullKey(platform = process.platform, arch = process.arch) {
   return `${platform}-${arch}`;
@@ -149,13 +151,16 @@ async function normalizeApiRelease(release, version) {
     return fetchJson(asset.browser_download_url, version);
   }
   const v = String(release.tag_name || '').replace(/^v/i, '');
-  const pick = (name) => {
-    const a = (release.assets || []).find(x => x.name === name);
-    return a ? { url: a.browser_download_url, size: a.size } : null;
+  const pick = (...names) => {
+    for (const name of names) {
+      const a = (release.assets || []).find(x => x.name === name);
+      if (a) return { name, url: a.browser_download_url, size: a.size };
+    }
+    return null;
   };
   const fullByPlatform = {};
-  for (const [key, name] of Object.entries(FULL_ASSET_NAMES)) {
-    const hit = pick(name);
+  for (const [key, names] of Object.entries(FULL_ASSET_NAMES)) {
+    const hit = pick(...names);
     if (hit) fullByPlatform[key] = hit;
   }
   return {
