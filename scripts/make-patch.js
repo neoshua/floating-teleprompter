@@ -163,6 +163,22 @@ function main() {
         sha256: sha256(fs.readFileSync(FULL_LOCAL))
       }
     : null;
+  // 完整包按「平台-架构」分别登记，应用端按 process.platform/process.arch 取用。
+  // full 保留为 Windows 包，兼容只认这个字段的 v1.0.2 客户端。
+  const fullByPlatform = {};
+  if (full) fullByPlatform['win32-x64'] = full;
+  for (const [key, name] of Object.entries({
+    'darwin-arm64': 'FloatingTeleprompter-mac-arm64.zip',
+    'darwin-x64': 'FloatingTeleprompter-mac-x64.zip'
+  })) {
+    const p = path.join(DIST, name);
+    if (!fs.existsSync(p)) continue;
+    fullByPlatform[key] = {
+      name, url: base + name,
+      size: fs.statSync(p).size,
+      sha256: sha256(fs.readFileSync(p))
+    };
+  }
   const latest = {
     version: VERSION,
     minVersion: MIN_VERSION,
@@ -170,6 +186,7 @@ function main() {
     notes,
     patch: { name: PATCH_NAME, url: base + PATCH_NAME, size: zip.length, sha256: sha256(zip) },
     full,
+    fullByPlatform,
     releaseUrl: `https://github.com/${REPO}/releases/tag/${TAG}`
   };
   fs.writeFileSync(path.join(DIST, 'latest.json'), JSON.stringify(latest, null, 2), 'utf8');
@@ -179,6 +196,7 @@ function main() {
   console.log('[patch] zip size     ', (zip.length / 1048576).toFixed(2), 'MB →', PATCH_NAME);
   console.log('[patch] zip sha256   ', sha256(zip));
   console.log('[patch] full package ', full ? (full.size / 1048576).toFixed(1) + ' MB' : '(not built yet)');
+  console.log('[patch] fullByPlatform', Object.keys(fullByPlatform).join(', ') || '(none)');
   console.log('[patch] round-trip   ', 'OK — 客户端解析器与校验器回读通过');
   console.log('[patch] latest.json  ', path.join(DIST, 'latest.json'));
 }

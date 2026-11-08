@@ -3,15 +3,23 @@
  * 双窗口：管理窗（稿件/编辑） + 提词窗（无边框、真透明、置顶、可穿透）
  */
 const { app, BrowserWindow, ipcMain, globalShortcut, Tray, Menu, screen,
-        session, nativeImage, shell } = require('electron');
+        session, nativeImage, shell, systemPreferences } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const { createUpdater } = require('./updater');
 
 const ROOT = __dirname;
-const ICON_PATH = path.join(ROOT, 'assets', 'icon.ico');
+const IS_MAC = process.platform === 'darwin';
 const IS_SELFTEST = process.argv.includes('--selftest');
+const ICON_PATH = path.join(ROOT, 'assets', IS_MAC ? 'icon.icns' : 'icon.ico');
+const TRAY_ICON_PATH = path.join(ROOT, 'assets', IS_MAC ? 'trayTemplate.png' : 'icon.ico');
+// Windows 版已验证 forward:true；macOS 上关掉 forward，让两个平台都走
+// 完全相同的「主进程轮询系统光标 → 恢复交互」逻辑，避开平台实现差异。
+const MOUSE_FORWARD = !IS_MAC;
+// macOS 上 ⌘⌥Space / ⌘⌥↑ 常被 Spotlight、输入法和系统快捷键占用，
+// 改用 ⌥⇧ 前缀；Windows 保持 Ctrl+Alt 不变。
+const HOTKEY_PREFIX = IS_MAC ? 'Alt+Shift' : 'CommandOrControl+Alt';
 
 let managerWin = null;
 let promptWin = null;
@@ -24,20 +32,28 @@ let updater = null;
 /* ---------------------------------------------------------------- 数据存储 */
 // 绿色版：数据放在 exe 同级 data/，随目录一起拷走；不可写时回退到 userData
 function resolveDataDir() {
-  const primary = app.isPackaged
-    ? path.join(path.dirname(app.getPath('exe')), 'data')
-    : path.join(ROOT, 'data');
-  try {
-    fs.mkdirSync(primary, { recursive: true });
-    const probe = path.join(primary, '.writable');
-    fs.writeFileSync(probe, '1');
-    fs.unlinkSync(probe);
-    return primary;
-  } catch (_) {
-    const fallback = path.join(app.getPath('userData'), 'data');
-    fs.mkdirSync(fallback, { recursive: true });
-    return fallback;
+  // macOS 的 .app 包内不可写（写进去会破坏签名，且可能以只读方式挂载），
+  // 因此绿色版数据目录放在 .app 同级；不可写时回退到 ~/Library/Application Support。
+  const candidates = [];
+  if (!app.isPackaged) {
+    candidates.push(path.join(ROOT, 'data'));
+  } else if (IS_MAC) {
+    const exeDir = path.dirname(app.getPath('exe')); // .../名字.app/Contents/MacOS
+    candidates.push(path.resolve(exeDir, '..', '..', '..', 'data'));
+  } else {
+    candidates.push(path.join(path.dirname(app.getPath('exe')), 'data'));
   }
+  candidates.push(path.join(app.getPath('userData'), 'data'));
+  for (const dir of candidates) {
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      const probe = path.join(dir, '.writable');
+      fs.writeFileSync(probe, '1');
+      fs.unlinkSync(probe);
+      return dir;
+    } catch (_) { /* 换下一个候选目录 */ }
+  }
+  return path.join(app.getPath('userData'), 'data');
 }
 let DATA_DIR = null;
 let STORE_PATH = null;
@@ -268,8 +284,8 @@ function setClickThrough(on) {
   clickThrough = !!on;
   lastIgnore = null;
   if (promptWin && !promptWin.isDestroyed()) {
-    // forward 只在 macOS 生效；Windows 由下面的光标轮询负责恢复交互
-    promptWin.setIgnoreMouseEvents(clickThrough, { forward: true });
+    // 交互恢复一律交给下面的主进程光标轮询，两个平台行为一致
+    promptWin.setIgnoreMouseEvents(clickThrough, { forward: MOUSE_FORWARD });
     lastIgnore = clickThrough;
     promptWin.webContents.send('prompt:click-through', clickThrough);
   }
@@ -278,8 +294,9 @@ function setClickThrough(on) {
   return clickThrough;
 }
 
-/* Windows 上 ignoreMouseEvents 会连 mousemove 一起吞掉，
-   主进程直接轮询系统光标位置。可交互区域由渲染层上报真实控件矩形
+/* 开启穿透后窗口不再收到 mousemove，主进程直接轮询系统光标位置。
+   Windows 与 macOS 都走这套逻辑，不依赖平台差异较大的 forward 行为。
+   可交互区域由渲染层上报真实控件矩形
    （顶栏 / 底栏 / 打开的设置或调试浮层），避免用硬编码条带漏判：
    旧逻辑只认顶部 46px 和底部 88px，导致整窗高的设置面板里
    只有这两条带能点，关闭按钮横跨 46px 边界就出现「半截点不动」。 */
@@ -307,7 +324,7 @@ function applyIgnore(ignore, force) {
   ignore = !!ignore;
   if (!force && lastIgnore === ignore) return;
   lastIgnore = ignore;
-  promptWin.setIgnoreMouseEvents(ignore, { forward: true });
+  promptWin.setIgnoreMouseEvents(ignore, { forward: MOUSE_FORWARD });
   promptWin.webContents.send('prompt:hover-ui', !ignore);
 }
 function refreshHover(force) {
@@ -339,12 +356,12 @@ function stopHoverWatcher() {
 /* ---------------------------------------------------------------- 全局快捷键 */
 let hotkeysOn = false;
 const HOTKEY_MAP = [
-  ['CommandOrControl+Alt+Space', 'hotkey:toggle-play'],
-  ['CommandOrControl+Alt+Up', 'hotkey:nudge-up'],
-  ['CommandOrControl+Alt+Down', 'hotkey:nudge-down'],
-  ['CommandOrControl+Alt+R', 'hotkey:restart'],
-  ['CommandOrControl+Alt+P', 'hotkey:toggle-through']
-];
+  ['Space', 'hotkey:toggle-play'],
+  ['Up', 'hotkey:nudge-up'],
+  ['Down', 'hotkey:nudge-down'],
+  ['R', 'hotkey:restart'],
+  ['P', 'hotkey:toggle-through']
+].map(([key, channel]) => [`${HOTKEY_PREFIX}+${key}`, channel]);
 
 function registerHotkeys() {
   if (hotkeysOn || !STORE.settings.globalHotkeys) return;
@@ -358,7 +375,7 @@ function registerHotkeys() {
     } catch (_) { ok = false; }
   }
   try {
-    globalShortcut.register('CommandOrControl+Alt+T', () => {
+    globalShortcut.register(`${HOTKEY_PREFIX}+T`, () => {
       if (!promptWin || promptWin.isDestroyed()) return;
       if (promptWin.isVisible()) { promptWin.hide(); promptHiddenByUser = true; }
       else { promptWin.show(); promptHiddenByUser = false; }
@@ -389,10 +406,17 @@ function showAbout() { sendToManager('app:show-about'); }
 function showUpdateDialog() { sendToManager('app:show-update'); }
 
 function createTray() {
-  if (!fs.existsSync(ICON_PATH)) return;
-  let img = nativeImage.createFromPath(ICON_PATH);
+  if (!fs.existsSync(TRAY_ICON_PATH)) return;
+  let img = nativeImage.createFromPath(TRAY_ICON_PATH);
   if (img.isEmpty()) return;
-  tray = new Tray(img.resize({ width: 16, height: 16 }));
+  if (IS_MAC) {
+    // 菜单栏图标必须是 Template：纯黑形状 + alpha，由系统按明暗自动着色。
+    // 同目录的 trayTemplate@2x.png 会被 Electron 自动识别为 Retina 版本。
+    img.setTemplateImage(true);
+    tray = new Tray(img);
+  } else {
+    tray = new Tray(img.resize({ width: 16, height: 16 }));
+  }
   tray.setToolTip('飓风提词器 桌面版');
   const menu = Menu.buildFromTemplate([
     { label: '打开稿件管理', click: () => { if (managerWin) { managerWin.show(); managerWin.focus(); } else managerWin = createManager(); } },
@@ -453,7 +477,7 @@ function bindIpc() {
     // 与轮询共用 lastIgnore，避免渲染层调用后轮询状态不同步而把穿透偷偷打开
     if (promptWin && !promptWin.isDestroyed()) {
       const v = !!ignore && clickThrough;
-      promptWin.setIgnoreMouseEvents(v, { forward: true });
+      promptWin.setIgnoreMouseEvents(v, { forward: MOUSE_FORWARD });
       lastIgnore = v;
     }
     return true;
@@ -501,8 +525,11 @@ function bindIpc() {
   ipcMain.handle('win:close', (e) => {
     const w = BrowserWindow.fromWebContents(e.sender);
     if (!w) return;
-    if (w === managerWin) { app.isQuitting = true; app.quit(); }
-    else w.close();
+    if (w === managerWin) {
+      // macOS 习惯：关闭窗口不退出应用，保留菜单栏入口；⌘Q / 托盘「退出」才真退出
+      if (IS_MAC) w.hide();
+      else { app.isQuitting = true; app.quit(); }
+    } else w.close();
   });
   ipcMain.handle('win:open-manager', () => {
     if (!managerWin || managerWin.isDestroyed()) managerWin = createManager();
@@ -526,7 +553,8 @@ function bindIpc() {
   });
   ipcMain.handle('app:info', () => ({
     dataDir: DATA_DIR, modelDir: path.join(ROOT, 'assets', 'model'),
-    packaged: app.isPackaged, version: app.getVersion(), port: serverPort
+    packaged: app.isPackaged, version: app.getVersion(), port: serverPort,
+    platform: process.platform, isMac: IS_MAC, hotkeyPrefix: HOTKEY_PREFIX
   }));
 
   /* 应用内增量更新（只替换代码，不重下 150MB 完整包） */
@@ -535,7 +563,15 @@ function bindIpc() {
   ipcMain.handle('update:restart', () => { updater.restart(); return true; });
   ipcMain.handle('update:settings', () => updater.getSettings());
   ipcMain.handle('update:set-settings', (_e, patch) => updater.setSettings(patch || {}));
-  ipcMain.handle('audio:permission', () => true);
+  ipcMain.handle('audio:permission', async () => {
+    // macOS 10.14+ 需要显式申请麦克风权限（Info.plist 里已附用途说明），
+    // 否则语音跟读会静默失败。音频仍只在本机 WebAssembly 中处理。
+    if (IS_MAC && systemPreferences.askForMediaAccess) {
+      try { return await systemPreferences.askForMediaAccess('microphone'); }
+      catch (_) { return true; }
+    }
+    return true;
+  });
 
   // 渲染层日志回传（自检用）
   ipcMain.on('log', (_e, ...args) => console.log('[renderer]', ...args));
@@ -613,6 +649,20 @@ async function boot() {
     emit: (channel, payload) => broadcast(channel, payload),
     restart: () => { app.isQuitting = true; app.relaunch(); app.exit(0); }
   });
+
+  if (IS_MAC) {
+    // 不设置应用菜单的话 macOS 会显示默认的「Electron」菜单，连 ⌘Q 都退不出程序。
+    // 本项目窗口自绘标题栏，不需要默认菜单项，给最小可用的系统菜单即可。
+    Menu.setApplicationMenu(Menu.buildFromTemplate([
+      { role: 'appMenu' },
+      { role: 'editMenu' },
+      { role: 'windowMenu' },
+      { label: '帮助', submenu: [
+        { label: '关于与致谢', click: showAbout },
+        { label: '检查更新…', click: showUpdateDialog }
+      ] }
+    ]));
+  }
 
   bindIpc();
   createTray();

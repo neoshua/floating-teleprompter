@@ -25,7 +25,10 @@
   "scripts": {
     "start": "electron .",
     "setup": "node scripts/setup.mjs",
-    "pack": "node scripts/pack.js"
+    "pack": "node scripts/pack.js",
+    "make-mac-assets": "node scripts/make-mac-assets.js",
+    "pack:mac": "node scripts/make-mac-assets.js && node scripts/pack.js --platform darwin --arch arm64",
+    "pack:mac-intel": "node scripts/make-mac-assets.js && node scripts/pack.js --platform darwin --arch x64"
   },
   "devDependencies": {
     "electron": "37.2.6",

@@ -72,6 +72,37 @@
 
 ![稿件管理](docs/screenshots/manager.png)
 
+## 平台支持
+
+| 平台 | 状态 | 说明 |
+| --- | --- | --- |
+| Windows x64 | 已发布 | `v1.0.2`，Release 附件 `FloatingTeleprompter-win64.zip` |
+| macOS Apple 芯片 / Intel | 代码已适配，出包中 | 由 `.github/workflows/build-macos.yml` 在 GitHub 的 macOS 构建机生成 |
+| Android | 规划中 | 系统有悬浮窗权限，能力上最贴合提词器；需要另写原生 / WebView 壳层 |
+| iOS / iPadOS | 最后评估 | 系统不允许第三方 App 悬浮在其他应用之上，只能用画中画近似，形态差异大 |
+
+**为什么 macOS 包不能在这台 Windows 上直接打出来**：Electron 的 `.app` 依赖
+`Contents/Frameworks` 里的符号链接和 Unix 可执行位，Windows 的压缩工具会把链接
+当普通文件、丢掉 `+x`，产出的 `.app` 打不开。因此仓库提供 GitHub Actions 工作流，
+在真正的 macOS runner 上用 `zip -y` 打包，并验证主二进制可执行、符号链接仍在。
+`scripts/pack.js` 检测到「Windows 上请求 darwin」时会直接报错，避免产出坏包。
+
+**macOS 版本的已知差异**（代码里已做适配）：
+
+- 未做 Apple 签名 / 公证。首次打开需按住 Control 点按 →「打开」，或执行
+  `xattr -cr "/Applications/飓风提词器.app"`。要免除这一步需要 Apple Developer 账号。
+- 全局快捷键改用 `⌥⇧`（Option+Shift）前缀，避开 Spotlight 与系统快捷键冲突；
+  `⌘Q` 退出，关闭主窗口只隐藏、菜单栏图标仍在。
+- 数据目录：优先 `飓风提词器.app` 同级的 `data/`；若 .app 位于 `/Applications` 等
+  不可写位置，自动回退到 `~/Library/Application Support/飓风提词器/data/`。
+- 菜单栏使用 Template 图标（随系统明暗自动着色）；`Info.plist` 带麦克风用途说明，
+  否则 macOS 10.14+ 在申请录音权限时会直接终止应用。
+- 应用内更新仍可用：`latest.json` 的 `fullByPlatform` 按「平台-架构」给完整包，
+  增量补丁只含代码，Windows / macOS 共用同一个。
+
+> 发版约定：增量补丁只包含代码文件，不含 `data/` 与 `assets/` 里的模型。
+> 若以后更换图标等 `assets/` 资源，必须重新出完整包，不能只发补丁。
+
 ## 快速开始
 
 ### 方式一：直接用（推荐给大多数创作者）
@@ -133,15 +164,26 @@ npm start            # 启动开发版
 ```bash
 npm run pack                    # 生成 dist/飓风提词器-桌面版-win64.zip
 node scripts/make-patch.js      # 生成 dist/patch-vX.Y.Z.zip 与 dist/latest.json
-node scripts/test-update.js     # 更新链路端到端回归测试（9 项）
+node scripts/test-update.js     # 更新链路端到端回归测试（10 项）
+```
+
+**macOS 包必须在 macOS 上构建**（原因见「平台支持」）。仓库已配置 GitHub Actions：
+发布 Release 时自动构建 arm64 / x64 两个 zip 并挂到该 Release；也可手动
+`Actions → Build macOS → Run workflow` 只产出 Artifact。Mac 本机可：
+
+```bash
+npm install && npm run setup
+npm run pack:mac                # Apple 芯片 → dist/FloatingTeleprompter-mac-arm64.zip
+npm run pack:mac-intel          # Intel     → dist/FloatingTeleprompter-mac-x64.zip
 ```
 
 构建产物中会自动附带 `LICENSE`、`NOTICE.md`、`THIRD_PARTY_NOTICES.md`、
 `third_party/` 与 `使用说明.txt`，请一并分发、不要删除。
 
-维护者发版时，把 `patch-vX.Y.Z.zip`、`latest.json`、完整包一起上传到对应 Release。
-`latest.json` 是应用读取的版本清单，里面含补丁的 URL、大小与 SHA-256；
-补丁是**全量代码快照**（不含运行时与模型），所以停在任意旧版本的用户都能一步升到最新。
+维护者发版时，把 `patch-vX.Y.Z.zip`、`latest.json`、各平台完整包一起上传到对应 Release。
+`latest.json` 是应用读取的版本清单，里面含补丁的 URL、大小与 SHA-256，
+并用 `fullByPlatform` 按「平台-架构」登记完整包；补丁是**全量代码快照**
+（不含运行时与模型），所以停在任意旧版本的用户都能一步升到最新。
 
 ## 使用要点
 
@@ -167,8 +209,12 @@ node scripts/test-update.js     # 更新链路端到端回归测试（9 项）
 | `[` `]` | 语速 | `Esc` | 返回稿件管理 |
 
 全局快捷键（在任何软件中都生效，可在设置中关闭）：
-`Ctrl+Alt+空格` 播放暂停 · `Ctrl+Alt+↑/↓` 微调 · `Ctrl+Alt+R` 回到开头 ·
-`Ctrl+Alt+P` 穿透 · `Ctrl+Alt+T` 显示 / 隐藏提词窗。
+
+- **Windows**：`Ctrl+Alt+空格` 播放暂停 · `Ctrl+Alt+↑/↓` 微调 · `Ctrl+Alt+R` 回到开头 ·
+  `Ctrl+Alt+P` 穿透 · `Ctrl+Alt+T` 显示 / 隐藏提词窗。
+- **macOS**：`⌥⇧空格` 播放暂停 · `⌥⇧↑/↓` 微调 · `⌥⇧R` 回到开头 ·
+  `⌥⇧P` 穿透 · `⌥⇧T` 显示 / 隐藏提词窗。刻意不用 `⌘⌥`，避免与 Spotlight
+  和系统快捷键冲突；`⌘Q` 退出程序，关闭主窗口只隐藏、菜单栏图标仍在。
 
 ## 目录结构
 
@@ -186,10 +232,13 @@ src/
   ai-optimize.js        本地规则版正文优化
 scripts/
   setup.mjs             一键生成 vendor/ 与语音模型归档（纯 Node）
-  pack.js               打包 Windows 绿色版
+  make-mac-assets.js    生成 macOS 的 icon.icns 与菜单栏 Template 图标
+  pack.js               打包 Windows / macOS 绿色版
   make-patch.js         生成增量补丁与 latest.json 版本清单
   test-update.js        更新链路端到端回归测试
-assets/                  图标（模型归档由 setup 生成，不入库）
+.github/workflows/
+  build-macos.yml       在 macOS runner 上构建 arm64 / x64 并校验产物
+assets/                  Windows / macOS 图标（模型归档由 setup 生成，不入库）
 third_party/             上游许可证全文
 docs/screenshots/        界面预览图
 ```
@@ -224,6 +273,19 @@ docs/screenshots/        界面预览图
 
 ## 更新日志
 
+**进行中（未发布）** —— macOS 支持
+
+- 主进程适配 macOS：系统应用菜单（否则会显示「Electron」且 `⌘Q` 无效）、
+  Template 菜单栏图标、`⌥⇧` 全局快捷键、`.app` 同级数据目录与不可写回退、
+  关闭主窗口只隐藏，以及关闭 `forward` 让穿透命中判定与 Windows 走同一套轮询。
+- `Info.plist` 补 `NSMicrophoneUsageDescription`，避免语音跟读申请权限时被系统终止。
+- 新增 `scripts/make-mac-assets.js` 生成 `.icns` 与菜单栏图标；`pack.js` 支持
+  `--platform/--arch`、macOS 专属构建参数与 `zip -y`（保留符号链接和可执行位）。
+- 新增 `.github/workflows/build-macos.yml`，在 macOS runner 上构建并校验产物；
+  `latest.json` 增加 `fullByPlatform`，更新弹窗不会再给 Mac 用户推 Windows 安装包。
+- 本机验证：Windows 源码模式 `--selftest` `ok:true`；更新链路回归 10/10 通过。
+  **macOS 产物需由 CI 在真机构建，尚未发布。**
+
 **v1.0.2**（2026-11-07）—— 应用内增量更新
 
 - 新增应用内更新：顶栏「检查更新」/ 状态栏版本号可手动检查，启动时自动检查一次
@@ -233,7 +295,8 @@ docs/screenshots/        界面预览图
 - 安全设计：版本清单与补丁整包 + 逐文件 SHA-256 校验、下载域名白名单、
   写入路径白名单、安装前备份到 `data/backups/`、写入失败自动回滚。
 - 自检固化：`--selftest` 合并更新器本地回归项；新增 `scripts/test-update.js`
-  覆盖 zip 往返、版本门槛、篡改拦截、路径越界、备份、用户数据零改动与失败回滚共 9 项。
+  覆盖 zip 往返、版本门槛、篡改拦截、路径越界、备份、用户数据零改动与失败回滚共 9 项
+  （macOS 适配后追加「完整包按平台分发」共 10 项）。
 - 新增 `scripts/make-patch.js`，发版时生成 `patch-vX.Y.Z.zip` 与 `latest.json`。
 
 **v1.0.1**（2026-11-07）—— 交互修复

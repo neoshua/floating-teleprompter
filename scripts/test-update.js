@@ -10,7 +10,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const {
-  sha256, readZip, verifyPatch, writeFiles, compareVersions, isSafeRel
+  sha256, readZip, verifyPatch, writeFiles, compareVersions, isSafeRel, selectFull
 } = require('../updater');
 const { makeZip } = require('./make-patch');
 
@@ -186,6 +186,31 @@ try {
       '未做任何改动'
     );
     return '明确报错且未写入：' + msg;
+  });
+
+  check('完整包清单按「平台-架构」分发', () => {
+    const by = {
+      'win32-x64': { name: 'FloatingTeleprompter-win64.zip' },
+      'darwin-arm64': { name: 'FloatingTeleprompter-mac-arm64.zip' },
+      'darwin-x64': { name: 'FloatingTeleprompter-mac-x64.zip' }
+    };
+    const origPlatform = process.platform, origArch = process.arch;
+    const set = (key, value) => Object.defineProperty(process, key, { value, configurable: true });
+    try {
+      set('platform', 'win32'); set('arch', 'x64');
+      assert(selectFull({ fullByPlatform: by, full: { name: 'legacy' } }).name === by['win32-x64'].name, 'win32 选错');
+      set('platform', 'darwin'); set('arch', 'arm64');
+      assert(selectFull({ fullByPlatform: by }).name === by['darwin-arm64'].name, 'darwin-arm64 选错');
+      set('arch', 'x64');
+      assert(selectFull({ fullByPlatform: by }).name === by['darwin-x64'].name, 'darwin-x64 选错');
+      // v1.0.2 的旧清单只有 full（Windows 包），不能把它推给 Mac 用户
+      assert(selectFull({ full: { name: 'legacy' } }) === null, '旧清单把 Windows 包给了 Mac');
+      set('platform', 'win32');
+      assert(selectFull({ full: { name: 'legacy' } }).name === 'legacy', '旧客户端兼容失效');
+    } finally {
+      set('platform', origPlatform); set('arch', origArch);
+    }
+    return '三种平台各自命中；旧清单不会给 Mac 推 Windows 包';
   });
 } finally {
   fs.rmSync(tmp, { recursive: true, force: true });

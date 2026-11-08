@@ -122,6 +122,26 @@ async function fetchJson(url, version) {
   return JSON.parse(buf.toString('utf8'));
 }
 
+/* 完整包按「平台-架构」分发；补丁只含代码，所有平台共用同一个。
+   latest.json 里的 full 是历史字段（Windows 包），保留以兼容 v1.0.2 客户端。 */
+const FULL_ASSET_NAMES = {
+  'win32-x64': 'FloatingTeleprompter-win64.zip',
+  'darwin-arm64': 'FloatingTeleprompter-mac-arm64.zip',
+  'darwin-x64': 'FloatingTeleprompter-mac-x64.zip'
+};
+function fullKey(platform = process.platform, arch = process.arch) {
+  return `${platform}-${arch}`;
+}
+/** 按当前平台挑完整包；旧清单没有 fullByPlatform 时不把 Windows 包丢给 Mac 用户 */
+function selectFull(doc) {
+  const by = doc && doc.fullByPlatform;
+  if (by) {
+    if (by[fullKey()]) return by[fullKey()];
+    if (by[process.platform]) return by[process.platform];
+  }
+  return process.platform === 'win32' ? (doc && doc.full) || null : null;
+}
+
 /** GitHub API 兜底：优先再取 release 里的 latest.json，没有就现场拼一份 */
 async function normalizeApiRelease(release, version) {
   const asset = (release.assets || []).find(a => a.name === 'latest.json');
@@ -133,12 +153,18 @@ async function normalizeApiRelease(release, version) {
     const a = (release.assets || []).find(x => x.name === name);
     return a ? { url: a.browser_download_url, size: a.size } : null;
   };
+  const fullByPlatform = {};
+  for (const [key, name] of Object.entries(FULL_ASSET_NAMES)) {
+    const hit = pick(name);
+    if (hit) fullByPlatform[key] = hit;
+  }
   return {
     version: v,
     minVersion: v,
     notes: String(release.body || '').slice(0, 2000),
     patch: pick(`patch-v${v}.zip`),
-    full: pick('FloatingTeleprompter-win64.zip'),
+    full: fullByPlatform[fullKey()] || fullByPlatform['win32-x64'] || null,
+    fullByPlatform,
     releaseUrl: release.html_url || RELEASE_PAGE
   };
 }
@@ -385,7 +411,7 @@ function createUpdater(cfg) {
       notes: String(doc.notes || '').slice(0, 3000),
       released: doc.released || '',
       patch: doc.patch || null,
-      full: doc.full || null,
+      full: selectFull(doc),
       releaseUrl: doc.releaseUrl || `https://github.com/${REPO}/releases/tag/v${doc.version}`,
       canPatch: cmp > 0 && canPatch,
       reason: cmp > 0 && !canPatch
@@ -510,4 +536,7 @@ function createUpdater(cfg) {
   };
 }
 
-module.exports = { createUpdater, compareVersions, isSafeRel, readZip, sha256, verifyPatch, writeFiles };
+module.exports = {
+  createUpdater, compareVersions, isSafeRel, readZip, sha256,
+  verifyPatch, writeFiles, selectFull, fullKey
+};

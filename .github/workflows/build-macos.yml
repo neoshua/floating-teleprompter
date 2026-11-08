@@ -1,0 +1,107 @@
+name: Build macOS
+
+# macOS 包必须在 macOS 上构建：Electron 的 .app 依赖符号链接和 Unix 可执行位，
+# 在 Windows 上交叉打包会得到一个打不开的 .app。
+#   · 手动触发：Actions → Build macOS → Run workflow（产物在 Artifacts）
+#   · 发布 Release 时：自动构建 arm64 + x64 并把两个 zip 挂到该 Release
+on:
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: '要构建的架构'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+          - both
+          - arm64
+          - x64
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      arch: ${{ steps.pick.outputs.arch }}
+    steps:
+      - id: pick
+        env:
+          REQUESTED: ${{ inputs.arch }}
+        run: |
+          case "$REQUESTED" in
+            arm64) echo 'arch=["arm64"]' >> "$GITHUB_OUTPUT" ;;
+            x64)   echo 'arch=["x64"]' >> "$GITHUB_OUTPUT" ;;
+            *)     echo 'arch=["arm64","x64"]' >> "$GITHUB_OUTPUT" ;;
+          esac
+
+  build:
+    needs: matrix
+    runs-on: macos-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ${{ fromJSON(needs.matrix.outputs.arch) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      # vendor/vosk.js 与 43MB 离线模型由 setup.mjs 生成，不入库；
+      # 缓存起来避免每次重新从 alphacephei.com 下载。
+      - name: Restore generated assets
+        uses: actions/cache@v4
+        with:
+          path: |
+            assets/model.tar.gz
+            vendor/vosk.js
+          key: tp-assets-${{ hashFiles('package-lock.json') }}-v1
+
+      - name: Generate vendor and offline model
+        run: node scripts/setup.mjs
+
+      - name: Generate macOS icons
+        run: node scripts/make-mac-assets.js
+
+      - name: Build .app and distributable zip
+        run: node scripts/pack.js --platform darwin --arch ${{ matrix.arch }}
+
+      - name: Verify the .app survives unzip
+        run: |
+          set -euo pipefail
+          ZIP="dist/FloatingTeleprompter-mac-${{ matrix.arch }}.zip"
+          test -s "$ZIP"
+          unzip -t "$ZIP" | tail -2
+          rm -rf /tmp/tp-verify && mkdir -p /tmp/tp-verify
+          unzip -q "$ZIP" -d /tmp/tp-verify
+          APP="$(find /tmp/tp-verify -maxdepth 2 -name '飓风提词器.app' -print -quit)"
+          test -n "$APP"
+          test -x "$APP/Contents/MacOS/飓风提词器"
+          test -f "$APP/Contents/Resources/app/main.js"
+          grep -q 'NSMicrophoneUsageDescription' "$APP/Contents/Info.plist"
+          LINKS="$(find "$APP/Contents/Frameworks" -type l | wc -l | tr -d ' ')"
+          echo "APP_OK $APP | symlinks=$LINKS"
+          shasum -a 256 "$ZIP"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-${{ matrix.arch }}
+          path: dist/FloatingTeleprompter-mac-${{ matrix.arch }}.zip
+          if-no-files-found: error
+
+      - name: Attach zip to published release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG" "dist/FloatingTeleprompter-mac-${{ matrix.arch }}.zip" --clobber
