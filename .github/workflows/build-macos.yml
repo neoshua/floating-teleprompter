@@ -85,16 +85,22 @@ jobs:
           rm -rf /tmp/tp-verify && mkdir -p /tmp/tp-verify
           unzip -q "$ZIP" -d /tmp/tp-verify
           APP="$(find /tmp/tp-verify -maxdepth 2 -name '飓风提词器.app' -print -quit)"
-          test -n "$APP"
-          test -x "$APP/Contents/MacOS/飓风提词器"
-          test -f "$APP/Contents/Resources/app/main.js"
-          test -f "$APP/Contents/Resources/app/updater.js"
-          test -f "$APP/Contents/Resources/app/assets/trayTemplate.png"
-          test -f "$APP/Contents/Resources/icon.icns"
-          grep -q 'NSMicrophoneUsageDescription' "$APP/Contents/Info.plist"
+          test -n "$APP" || { echo "ASSERT_FAIL .app 未找到"; find /tmp/tp-verify -maxdepth 3 | head -30; exit 1; }
+          echo "APP=$APP"
+          echo "--- Contents/Resources ---"
+          ls -1 "$APP/Contents/Resources" | head -40
+          echo "--- Contents/MacOS ---"
+          ls -l "$APP/Contents/MacOS"
+          test -x "$APP/Contents/MacOS/飓风提词器" || { echo "ASSERT_FAIL 主二进制不可执行"; exit 1; }
+          test -f "$APP/Contents/Resources/app/main.js" || { echo "ASSERT_FAIL 缺 main.js"; exit 1; }
+          test -f "$APP/Contents/Resources/app/updater.js" || { echo "ASSERT_FAIL 缺 updater.js"; exit 1; }
+          test -f "$APP/Contents/Resources/app/assets/trayTemplate.png" || { echo "ASSERT_FAIL 缺 trayTemplate.png"; exit 1; }
+          ICNS="$(find "$APP/Contents/Resources" -maxdepth 1 -name '*.icns' -print -quit)"
+          test -n "$ICNS" || { echo "ASSERT_FAIL Resources 下没有 .icns 图标"; exit 1; }
+          grep -q 'NSMicrophoneUsageDescription' "$APP/Contents/Info.plist" || { echo "ASSERT_FAIL Info.plist 缺麦克风用途说明"; exit 1; }
           LINKS="$(find "$APP/Contents/Frameworks" -type l | wc -l | tr -d ' ')"
-          test "$LINKS" -gt 0
-          echo "APP_OK $APP | symlinks=$LINKS | icon.icns OK"
+          test "$LINKS" -gt 0 || { echo "ASSERT_FAIL Frameworks 符号链接丢失 ($LINKS)"; exit 1; }
+          echo "APP_OK | icon=$ICNS | symlinks=$LINKS"
           shasum -a 256 "$ZIP"
 
       - uses: actions/upload-artifact@v4
