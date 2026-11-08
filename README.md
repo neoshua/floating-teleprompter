@@ -77,7 +77,7 @@
 | 平台 | 状态 | 说明 |
 | --- | --- | --- |
 | Windows x64 | 已发布 | `v1.0.2`，Release 附件 `FloatingTeleprompter-win64.zip` |
-| macOS Apple 芯片 / Intel | 代码已适配，出包中 | 由 `.github/workflows/build-macos.yml` 在 GitHub 的 macOS 构建机生成 |
+| macOS Apple 芯片 / Intel | 已构建，待发布 | arm64 / x64 两个 zip 已由 `.github/workflows/build-macos.yml` 生成并通过结构校验，暂未上传 Release |
 | Android | 规划中 | 系统有悬浮窗权限，能力上最贴合提词器；需要另写原生 / WebView 壳层 |
 | iOS / iPadOS | 最后评估 | 系统不允许第三方 App 悬浮在其他应用之上，只能用画中画近似，形态差异大 |
 
